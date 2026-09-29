@@ -1,6 +1,7 @@
 # Book Manager
 
-Sistema de gestión de libros desarrollado en Python para la materia **Seminario de Actualización I**.
+Sistema de gestión de libros desarrollado en Python para la materia 
+**Seminario de Actualización I**.
 
 ## Integrantes - Grupo 26
 - Frigo, Claudia Lorena
@@ -87,14 +88,21 @@ Desde un consola:
 
 ir al directorio `src`:
 ```bash
-python -m book_manager.main                      # usa los datos existentes
-python -m book_manager.preload_data.preload_data  # regenera los datos de ejemplo
+# usa los datos existentes
+python -m book_manager.main
+
+# precarga los datos de ejemplo
+python -m book_manager.preload_data.preload_data
 ```
 
 Desde un notebook:
 
 ```python
 from book_manager.main import main
-main(import_default_data=False)  # usa los datos existentes
-main(import_default_data=True)   # regenera los datos de ejemplo
+
+# usa los datos existentes
+main(import_default_data=False)
+
+# regenera los datos de ejemplo
+main(import_default_data=True)
 ```
