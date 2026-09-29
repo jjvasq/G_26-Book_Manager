@@ -700,3 +700,4 @@ class CotizacionDolar:
             f"{self.fecha} | {self.tipo.nombre:<10} "
             f"| compra $ {self.compra:,.2f} | venta $ {self.venta:,.2f}"
         )
+        
