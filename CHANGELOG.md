@@ -1,5 +1,10 @@
 # Changelog
 
+## [Ejercicio 07]
+- Se crea `main.py` con la función `main(import_default_data)`.
+- La precarga de datos se ejecuta automáticamente si no hay datos cargados, con
+ `main(import_default_data=True)` se regeneran los datos de ejemplo.
+
 ## [Ejercicio 06]
 - Se crea la interfaz de consola con menús de CRUD para cada Entidad.
 - Se agregan movimientos de stock, histórico de cotizaciones y reportes.
