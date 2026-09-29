@@ -1,5 +1,10 @@
 # Changelog
 
+## [Ejercicio 05]
+- Se crea `preload_data.py` con al menos 10 registros por Entidad.
+- Se generan los archivos CSV en `migrations/csv`.
+- En la precarga se vacían los CSV antes de cargar los datos.
+
 ## [Ejercicio 04]
 - Se crean los servicios con validaciones de negocio (unicidad, integridad referencial).
 - Se agrega la conversión de precios a pesos y la consulta a dolarapi.com.
