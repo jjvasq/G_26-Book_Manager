@@ -1,0 +1,2 @@
+# Dependencias del proyecto Book Manager
+# Agregar aquí las librerías necesarias para el proyecto
