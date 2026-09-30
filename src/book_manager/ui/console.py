@@ -751,14 +751,22 @@ class Consola:
 
         def modificar() -> None:
             tipo = self._elegir_tipo()
-            self._mostrar(servicio.historico(tipo.id))
+            historico = servicio.historico(tipo.id)
+            self._mostrar(historico)
+            if not historico:
+                print("No hay cotizaciones para modificar.")
+                return
             actual = elegir_cotizacion(tipo)
             cotizacion = valores(tipo, actual.fecha, actual)
             print(f"Cambios guardados: {servicio.actualizar(cotizacion)}")
 
         def baja() -> None:
             tipo = self._elegir_tipo()
-            self._mostrar(servicio.historico(tipo.id))
+            historico = servicio.historico(tipo.id)
+            self._mostrar(historico)
+            if not historico:
+                print("No hay cotizaciones para eliminar.")
+                return
             fecha = elegir_cotizacion(tipo).fecha
             if self._confirmar("¿Seguro que desea eliminarla?"):
                 servicio.eliminar(tipo.id, fecha)
