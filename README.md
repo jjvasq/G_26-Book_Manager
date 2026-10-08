@@ -8,28 +8,33 @@ Sistema de gestión de libros desarrollado en Python para la materia
 - Pappalardo, Carla Giorgina
 - Vasquez, Juan José
 
-## Sprint 1
+## Sprint 2
 
 ### Objetivo
 
 Aplicar los conocimientos adquiridos en programación orientada a objetos y
-en almacenamiento de datos en archivos para su persistencia.
+consolidar las bases del manejo de bases de datos relacionales:
+normalización, conexión segura y carga inicial, usando el ORM SQLAlchemy.
 
 ### Introducción y contexto
 
-Una librería con venta al público necesita modernizar su sistema de gestión
-de inventario de libros. Debido a la fluctuación en los costos de importación
-de material bibliográfico, el sistema debe gestionar precios en diferentes
-monedas y seguir de cerca la cotización del dólar para actualizar sus valores.
+En este sprint se amplía el alcance del sistema: la aplicación deja de
+persistir en archivos CSV y pasa a persistir en una base de datos
+relacional mediante SQLAlchemy.
 
-Se desarrolla una aplicación de consola (CLI) en Python que permite gestionar
-el inventario, cotizar los libros según el valor del dólar y, en próximos
-sprints, comparar precios con la competencia web (sitio de referencia:
-Cúspide).
+Los datos cargados durante el Sprint 1 (archivos de
+`src/book_manager/migrations/csv`) se migran a tablas relacionales. Durante
+la migración se generan archivos `.sql` con las sentencias de inserción en
+`src/book_manager/migrations/sql`.
+
+Además, las cotizaciones del dólar se obtienen de una API externa
+(DolarApi), cuya URL se configura en el archivo `.env` junto con la cadena
+de conexión a la base de datos. El sistema muestra una lista de precios
+bimonetaria (en pesos y en otra moneda) y exporta los precios a CSV.
 
 Entidades: Libro, Genero, Editorial, Moneda, TipoCotizacion, Precio, Stock y
-CotizacionDolar. Cada una cuenta con su CRUD completo y se persiste en
-archivos CSV dentro de `src/book_manager/migrations/csv`.
+CotizacionDolar. Cada una cuenta con su CRUD completo y su tabla en la base
+de datos.
 
 ---
 
@@ -38,8 +43,12 @@ archivos CSV dentro de `src/book_manager/migrations/csv`.
 ```text
 ├── src/
 │   └── book_manager/
+│       ├── database/
+│       │   └── connection.py
 │       ├── entities/
 │       │   └── entities.py
+│       ├── models/
+│       │   └── models.py
 │       ├── preload_data/
 │       │   └── preload_data.py
 │       ├── repositories/
@@ -47,10 +56,12 @@ archivos CSV dentro de `src/book_manager/migrations/csv`.
 │       ├── services/
 │       │   └── services.py
 │       ├── migrations/
-│       │   └── csv/
+│       │   ├── csv/
+│       │   └── sql/
 │       ├── ui/
 │       │   └── console.py
 │       └── main.py
+├── .env
 ├── CHANGELOG.md
 ├── README.md
 └── requirements.txt

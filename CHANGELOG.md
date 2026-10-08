@@ -1,5 +1,15 @@
 # Changelog
 
+# Sprint 2
+
+## [Ejercicio 01]
+- Se crea la rama `Sprint_2` a partir de la rama `Sprint_1`.
+- Se agregan las carpetas `database`, `models`, `migrations/sql`.
+- Se crea el archivo `.env` en la raíz del proyecto.
+- Se actualiza el README con el objetivo y el contexto del Sprint 2.
+
+# Sprint 1
+
 ## [Ejercicio 07]
 - Se crea `main.py` con la función `main(import_default_data)`.
 - La precarga de datos se ejecuta automáticamente si no hay datos cargados, con
