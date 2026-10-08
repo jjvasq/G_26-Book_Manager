@@ -2,6 +2,15 @@
 
 # Sprint 2
 
+## [Ejercicio 03]
+- Se crea el context manager `Transaccion` (métodos `__enter__` y
+`__exit__`) para manejar las transacciones.
+- Si el bloque `with` termina sin errores se hace `commit`. Si se produce
+una excepción se hace `rollback` y la excepción se propaga. La sesión se
+cierra siempre.
+- Se agrega el método `ConexionDB.transaccion()` que devuelve el context
+manager.
+
 ## [Ejercicio 02]
 - Se crea la clase `ConexionDB` en `database/connection.py`, que administra
 el engine y las sesiones de SQLAlchemy sobre la base PostgreSQL de Supabase.
