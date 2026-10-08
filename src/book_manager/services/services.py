@@ -11,7 +11,7 @@ import requests
 from book_manager.entities.entities import (
     CotizacionDolar,
     Editorial,
-    EntidadId,
+    EntidadBase,
     Genero,
     Libro,
     Moneda,
@@ -29,7 +29,7 @@ from book_manager.repositories.repositories import (
     Repositorios,
 )
 
-T = TypeVar("T", bound=EntidadId)
+T = TypeVar("T", bound=EntidadBase)
 
 URL_DOLAR_API = "https://dolarapi.com/v1/dolares"
 

@@ -77,8 +77,8 @@ def _validar_entero(valor: int, campo: str, minimo: int = 0) -> int:
     return valor
 
 
-class EntidadId(ABC):
-    """Clase EntidadId para las entidades identificadas por un ID entero.
+class EntidadBase(ABC):
+    """Clase EntidadBase para las entidades identificadas por un ID entero.
 
     Un ID igual a 0 indica que la entidad todavía no fue almacenada,
     el repositorio le asigna el próximo ID disponible al crearla.
@@ -121,7 +121,7 @@ class EntidadId(ABC):
         return hash((type(self).__name__, self.id))
 
 
-class Genero(EntidadId):
+class Genero(EntidadBase):
     """ Genero literario al que pertenece un libro."""
 
     def __init__(self, id: int, nombre: str, descripcion: str = "") -> None:
@@ -163,7 +163,7 @@ class Genero(EntidadId):
         return f"[{self.id}] {self.nombre} - {self.descripcion}"
 
 
-class Editorial(EntidadId):
+class Editorial(EntidadBase):
     """ Editorial de Liberos """
 
     def __init__(self, id: int, nombre: str, pais: str, email: str) -> None:
@@ -219,7 +219,7 @@ class Editorial(EntidadId):
         return f"[{self.id}] {self.nombre} ({self.pais}) - {self.email}"
 
 
-class Moneda(EntidadId):
+class Moneda(EntidadBase):
     """Moneda en la que se puede expresar un precio. """
 
     CODIGO_LOCAL = "ARS"
@@ -306,7 +306,7 @@ class Moneda(EntidadId):
         )
 
 
-class TipoCotizacion(EntidadId):
+class TipoCotizacion(EntidadBase):
     """Tipo de cotización del dólar (Oficial, Blue, MEP, etc.)."""
 
     def __init__(self, id: int, nombre: str, descripcion: str = "") -> None:
@@ -348,7 +348,7 @@ class TipoCotizacion(EntidadId):
         return f"[{self.id}] {self.nombre} - {self.descripcion}"
 
 
-class Libro(EntidadId):
+class Libro(EntidadBase):
     """Título del catálogo de la librería."""
 
     def __init__(
@@ -463,7 +463,7 @@ class Libro(EntidadId):
         )
 
 
-class Precio(EntidadId):
+class Precio(EntidadBase):
     """Valor monetario de un libro expresado en una moneda."""
 
     def __init__(
