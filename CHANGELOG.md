@@ -2,6 +2,15 @@
 
 # Sprint 2
 
+## [Ejercicio 02]
+- Se crea la clase `ConexionDB` en `database/connection.py`, que administra
+el engine y las sesiones de SQLAlchemy sobre la base PostgreSQL de Supabase.
+- La URL de conexión (`DATABASE_URL`) se guarda en el `.env` tal como la da
+Supabase (Connect > ORM > `DIRECT_URL`), con el marcador `[YOUR-PASSWORD]`.
+- `probar()` verifica la conexión consultando `SELECT version();`.
+- Se agregan `SQLAlchemy`, `python-dotenv` y `psycopg2-binary` a
+`requirements.txt`.
+
 ## [Ejercicio 01]
 - Se crea la rama `Sprint_2` a partir de la rama `Sprint_1`.
 - Se agregan las carpetas `database`, `models`, `migrations/sql`.
