@@ -2,6 +2,18 @@
 
 # Sprint 2
 
+## [Ejercicio 04]
+- Se crean los modelos ORM en `models/models.py`: `generos`, `editoriales`,
+`monedas`, `tipos_cotizacion`, `libros`, `precios`, `stock` y
+`cotizaciones_dolar`.
+- Se definen claves foráneas y relaciones (`relationship`) entre libros,
+géneros, editoriales, precios, monedas, stock y cotizaciones.
+- `stock` usa como clave primaria el ID del libro y `cotizaciones_dolar` una
+clave compuesta (tipo, fecha), igual que en el Sprint 1.
+- Se agregan restricciones `CHECK` (montos y cotizaciones positivos, stock no
+negativo) y la columna `estado` para el borrado lógico.
+- Se agregan las funciones `crear_tablas` y `eliminar_tablas`.
+
 ## [Ejercicio 03]
 - Se crea el context manager `Transaccion` (métodos `__enter__` y
 `__exit__`) para manejar las transacciones.

@@ -71,9 +71,6 @@ class Transaccion:
     no hubo errores o los deshace (rollback) si se produjo una excepción.
     En ambos casos la sesión se cierra.
 
-    Ejemplo:
-        with conexion.transaccion() as sesion:
-            sesion.add(modelo)
     """
 
     def __init__(self, conexion: ConexionDB) -> None:
