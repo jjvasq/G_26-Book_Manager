@@ -3,10 +3,3 @@
 
 # Dependencias de DolarApi.
 requests>=2.31
-
-# ORM para la base de datos relacional.
-SQLAlchemy>=2.0
-# Lectura de variables de entorno desde el archivo .env.
-python-dotenv>=1.0
-# Driver de PostgreSQL (Supabase).
-psycopg2-binary>=2.9
