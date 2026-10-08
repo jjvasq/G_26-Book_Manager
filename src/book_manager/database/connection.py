@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from typing import Optional, Union
+from types import TracebackType
+from typing import Optional, Type, Union
 from urllib.parse import quote_plus
 
 from dotenv import load_dotenv
@@ -63,6 +64,66 @@ def url_desde_entorno() -> str:
     return url.replace(MARCADOR_PASSWORD, quote_plus(password))
 
 
+class Transaccion:
+    """Context manager que agrupa operaciones en una transacción.
+
+    Al entrar abre una sesión; al salir confirma los cambios (commit) si
+    no hubo errores o los deshace (rollback) si se produjo una excepción.
+    En ambos casos la sesión se cierra.
+
+    Ejemplo:
+        with conexion.transaccion() as sesion:
+            sesion.add(modelo)
+    """
+
+    def __init__(self, conexion: ConexionDB) -> None:
+        """Constructor.
+
+        Args:
+            conexion (ConexionDB): Conexión que provee la sesión.
+        """
+        self.__conexion: ConexionDB = conexion
+        self.__sesion: Optional[Session] = None
+
+    def __enter__(self) -> Session:
+        """Abre la sesión de la transacción.
+
+        Returns:
+            Session: Sesión sobre la que se realizan las operaciones.
+        """
+        self.__sesion = self.__conexion.nueva_sesion()
+        return self.__sesion
+
+    def __exit__(
+        self,
+        tipo_error: Optional[Type[BaseException]],
+        error: Optional[BaseException],
+        traza: Optional[TracebackType],
+    ) -> bool:
+        """Confirma o deshace la transacción y cierra la sesión.
+
+        Args:
+            tipo_error (Optional[Type[BaseException]]): Tipo de la
+                excepción ocurrida dentro del bloque, si la hubo.
+            error (Optional[BaseException]): Excepción ocurrida.
+            traza (Optional[TracebackType]): Traza de la excepción.
+
+        Returns:
+            bool: False, para que la excepción (si la hubo) se propague.
+        """
+        if self.__sesion is None:
+            return False
+        try:
+            if tipo_error is None:
+                self.__sesion.commit()
+            else:
+                self.__sesion.rollback()
+        finally:
+            self.__sesion.close()
+            self.__sesion = None
+        return False
+
+
 class ConexionDB:
     """Administra el engine y las sesiones de SQLAlchemy.
 
@@ -107,6 +168,14 @@ class ConexionDB:
             Session: Sesión de SQLAlchemy.
         """
         return self.__fabrica_sesiones()
+
+    def transaccion(self) -> Transaccion:
+        """Crea un context manager para operar dentro de una transacción.
+
+        Returns:
+            Transaccion: Context manager que entrega la sesión.
+        """
+        return Transaccion(self)
 
     def probar(self) -> str:
         """Verifica la conexión consultando la versión de PostgreSQL.
