@@ -10,7 +10,7 @@ from typing import Dict, Generic, Iterable, List, Optional, Tuple, TypeVar
 from book_manager.entities.entities import (
     CotizacionDolar,
     Editorial,
-    EntidadId,
+    EntidadBase,
     Genero,
     Libro,
     Moneda,
@@ -29,7 +29,7 @@ CSV_DIR = "/".join(__file__.replace("\\", "/").split("/")[:-2]) + (
 ACTIVO = 1
 BORRADO = 0
 
-T = TypeVar("T", bound=EntidadId)
+T = TypeVar("T", bound=EntidadBase)
 
 
 class IRepositorio(abc.ABC, Generic[T]):
@@ -560,7 +560,7 @@ class RepositorioCSV(IRepositorio[T]):
         """
 
 
-def _resolver(repositorio: RepositorioCSV, id: int, nombre: str) -> EntidadId:
+def _resolver(repositorio: RepositorioCSV, id: int, nombre: str) -> EntidadBase:
     """Obtiene una entidad relacionada o lanza error si no existe.
 
     También encuentra las entidades borradas, para que un registro que
@@ -573,7 +573,7 @@ def _resolver(repositorio: RepositorioCSV, id: int, nombre: str) -> EntidadId:
         nombre (str): Nombre de la entidad, para el mensaje de error.
 
     Returns:
-        EntidadId: La entidad encontrada.
+        EntidadBase: La entidad encontrada.
     """
     entidad = repositorio.leer_incluso_borrado(id)
     if entidad is None:
