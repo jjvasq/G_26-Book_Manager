@@ -2,6 +2,17 @@
 
 # Sprint 2
 
+## [Ejercicio 06]
+- Se reemplazan los repositorios CSV por repositorios sobre la base de datos
+(`RepositorioSQL` genérico y uno por entidad), manteniendo las interfaces
+`IRepositorio`, `IRepositorioStock` e `IRepositorioCotizacionDolar`.
+- Cada operación usa el context manager de transacciones y convierte los
+modelos ORM en entidades del dominio.
+- Se mantiene el borrado lógico con la columna `estado`.
+- `crear_repositorios` recibe la conexión a la base de datos.
+- La precarga de datos de ejemplo (`preload_data.py`) ahora carga la base de
+datos en lugar de los CSV.
+
 ## [Ejercicio 05]
 - Se crea `migrations/migrations.py` con la función
 `migrar_datos(carpeta_csvs, carpeta_sqls)`.
