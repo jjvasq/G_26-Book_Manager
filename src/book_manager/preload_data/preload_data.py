@@ -1,7 +1,10 @@
-"""Precarga de datos de ejemplo en los archivos CSV de migrations/csv."""
+"""Precarga de datos de ejemplo en la base de datos."""
 
 from __future__ import annotations
 
+from typing import Optional
+
+from book_manager.database.connection import ConexionDB
 from book_manager.entities.entities import (
     CotizacionDolar,
     Editorial,
@@ -13,13 +16,8 @@ from book_manager.entities.entities import (
     TipoCotizacion,
     texto_a_fecha,
 )
-from book_manager.repositories.repositories import (
-    CSV_DIR,
-    ArchivoCSV,
-    RepositorioLibro,
-    crear_repositorios,
-    vaciar_archivos,
-)
+from book_manager.models.models import crear_tablas, eliminar_tablas
+from book_manager.repositories.repositories import crear_repositorios
 
 GENEROS = [
     ("Novela", "Narrativa de ficción extensa"),
@@ -122,18 +120,21 @@ COTIZACIONES = [
 ]
 
 
-def precargar_datos(directorio: str = CSV_DIR) -> None:
-    """Vacía los CSV existentes y los genera de nuevo con los datos de ejemplo.
+def precargar_datos(conexion: Optional[ConexionDB] = None) -> None:
+    """Vacía la base de datos y la carga con los datos de ejemplo.
 
     Los datos se dan de alta a través de los repositorios, de modo que
     se aplican las mismas validaciones que en el uso normal del sistema.
 
     Args:
-        directorio (str): Carpeta donde se guardan los CSV.
+        conexion (Optional[ConexionDB]): Conexión a la base de datos. Si
+            es None se crea una con la configuración del .env.
     """
-    vaciar_archivos(directorio)
+    conexion = conexion or ConexionDB()
+    eliminar_tablas(conexion)
+    crear_tablas(conexion)
 
-    repos = crear_repositorios(directorio)
+    repos = crear_repositorios(conexion)
 
     for nombre, descripcion in GENEROS:
         repos.generos.crear(Genero(0, nombre, descripcion))
@@ -169,22 +170,6 @@ def precargar_datos(directorio: str = CSV_DIR) -> None:
         ))
 
 
-def hay_datos(directorio: str = CSV_DIR) -> bool:
-    """Comprueba si ya hay libros cargados en los archivos CSV.
-
-    Args:
-        directorio (str): Carpeta donde se guardan los CSV.
-
-    Returns:
-        bool: True si el CSV de libros tiene al menos un registro.
-    """
-    archivo = ArchivoCSV(
-        RepositorioLibro.ARCHIVO, RepositorioLibro.CAMPOS, directorio
-    )
-    return len(archivo.leer()) > 0
-
-
 if __name__ == "__main__":
     precargar_datos()
-    print(f"Datos precargados en {CSV_DIR}")
-    
+    print("Datos de ejemplo precargados en la base de datos.")

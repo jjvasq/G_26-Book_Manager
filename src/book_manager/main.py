@@ -29,7 +29,7 @@ def main(import_default_data: bool = False) -> None:
             f"Datos del Sprint 1 migrados a {conexion.url} "
             f"({sum(resumen.values())} registros)."
         )
-    servicios = crear_servicios(crear_repositorios())
+    servicios = crear_servicios(crear_repositorios(conexion))
     Consola(servicios).ejecutar()
 
 
