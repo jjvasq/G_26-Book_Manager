@@ -2,6 +2,18 @@
 
 # Sprint 2
 
+## [Ejercicio 05]
+- Se crea `migrations/migrations.py` con la función
+`migrar_datos(carpeta_csvs, carpeta_sqls)`.
+- Se leen los CSV del Sprint 1 y, por cada tabla, se genera un archivo `.sql`
+con las sentencias `INSERT` en `migrations/sql` (numerados según el orden de
+las claves foráneas).
+- Las sentencias se ejecutan en una única transacción: si una falla no se
+guarda ningún dato.
+- Se conservan los ID y el `estado` (borrado lógico) de cada registro.
+- `main.py` migra los datos automáticamente si la base está vacía, o siempre
+con `main(import_default_data=True)`.
+
 ## [Ejercicio 04]
 - Se crean los modelos ORM en `models/models.py`: `generos`, `editoriales`,
 `monedas`, `tipos_cotizacion`, `libros`, `precios`, `stock` y
