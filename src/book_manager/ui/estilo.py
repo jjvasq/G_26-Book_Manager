@@ -30,15 +30,20 @@ from book_manager.entities.entities import (
 )
 
 # Paleta de la aplicación: se cambia acá y se aplica en toda la consola.
+# Los colores son tonos medios que contrastan tanto con un fondo oscuro
+# como con uno claro, porque no sabemos qué tema usa cada terminal. Por
+# eso tampoco se fija un color de fondo ni blanco/negro para el texto
+# principal: "titulo" usa el color de texto propio de la terminal.
 TEMA = Theme({
-    "titulo": "bold white",
-    "acento": "bold #7aa2f7",
-    "suave": "#8a8fa3",
-    "numero": "bold #e0af68",
-    "ok": "bold #9ece6a",
-    "error": "bold #f7768e",
-    "aviso": "#e0af68",
-    "info": "#7dcfff",
+    "titulo": "bold",
+    "acento": "bold #4f7fe0",
+    "suave": "#808080",
+    "numero": "bold #b87700",
+    "ok": "bold #2b9443",
+    "error": "bold #e0405a",
+    "aviso": "#b87700",
+    "info": "#1a8bab",
+    "fila_par": "#4f7fe0",
 })
 
 consola = Console(theme=TEMA, highlight=False)
@@ -122,7 +127,7 @@ def nueva_tabla(titulo: str = "", *encabezados: Tuple[str, str]) -> Table:
     tabla = Table(
         title=titulo or None, title_style="acento", title_justify="left",
         box=box.ROUNDED, border_style="suave", header_style="acento",
-        row_styles=["", "on #1f2335"], caption_style="suave",
+        row_styles=["", "fila_par"], caption_style="suave",
         caption_justify="left",
     )
     for texto, alineacion in encabezados:
