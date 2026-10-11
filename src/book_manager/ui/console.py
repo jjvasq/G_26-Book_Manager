@@ -16,7 +16,13 @@ from book_manager.entities.entities import (
     TipoCotizacion,
     texto_a_fecha,
 )
+from book_manager.exceptions.exceptions import (
+    ApiCotizacionesError,
+    BookManagerError,
+    ConfiguracionError,
+)
 from book_manager.services.services import ServicioCRUD, Servicios
+from book_manager.ui import estilo as ui
 
 Accion = Callable[[], None]
 V = TypeVar("V")
@@ -39,11 +45,15 @@ class Consola:
 
     def ejecutar(self) -> None:
         """Muestra el menú principal hasta que el usuario elige salir."""
+        ui.banner(
+            "Book Manager G26",
+            "Book Manager · Gestión de catálogo y depósito",
+        )
         try:
             self._menu_principal()
         except (EOFError, KeyboardInterrupt):
-            print()
-        print("Sesión finalizada. ¡Nos vemos en la próxima lectura!")
+            ui.consola.print()
+        ui.exito("Sesión finalizada.")
 
     def _menu_principal(self) -> None:
         """Menú principal del sistema."""
@@ -74,27 +84,25 @@ class Consola:
             salir (str): Texto de la opción 0.
         """
         while True:
-            borde = "+" + "-" * (len(titulo) + 4) + "+"
-            print(f"\n{borde}\n|  {titulo}  |\n{borde}")
-            for numero, (texto, _) in enumerate(opciones, start=1):
-                print(f"  [{numero}] {texto}")
-            print(f"  [0] {salir}")
-            eleccion = input("» Elija un número: ").strip()
+            ui.menu(titulo, [texto for texto, _ in opciones], salir)
+            eleccion = ui.preguntar("Elija un número").strip()
             if eleccion == "0":
                 return
             if not eleccion.isdigit() or not (
                 1 <= int(eleccion) <= len(opciones)
             ):
-                print("Ese número no está en el menú, pruebe otra vez.")
+                ui.aviso("Ese número no está en el menú, pruebe otra vez.")
                 continue
             try:
                 opciones[int(eleccion) - 1][1]()
             except OperacionCancelada:
-                print("Se canceló la operación.")
+                ui.aviso("Se canceló la operación.")
+            except BookManagerError as error:
+                ui.error(error.mensaje)
             except ValueError as error:
-                print(f"[!] {error}")
+                ui.error(f"{error}")
             except RuntimeError as error:
-                print(f"[!] {error}")
+                ui.error(f"{error}")
 
     def _menu_crud(
         self,
@@ -128,17 +136,13 @@ class Consola:
     def _mostrar(
         items: Iterable[object], vacio: str = "(no hay registros cargados)"
     ) -> None:
-        """Imprime una lista de objetos, uno por línea.
+        """Muestra una lista de objetos en una tabla.
 
         Args:
             items (Iterable[object]): Objetos a mostrar.
             vacio (str): Mensaje si no hay registros.
         """
-        items = list(items)
-        for item in items:
-            print(f"  {item}")
-        if not items:
-            print(f"  {vacio}")
+        ui.mostrar(items, vacio)
 
     @staticmethod
     def _pedir_texto(mensaje: str, actual: Optional[str] = None) -> str:
@@ -152,7 +156,7 @@ class Consola:
             str: Texto ingresado.
         """
         sufijo = f" [{actual}]" if actual is not None else ""
-        valor = input(f"{mensaje}{sufijo}: ").strip()
+        valor = ui.preguntar(f"{mensaje}{sufijo}: ").strip()
         return valor if valor or actual is None else actual
 
     @staticmethod
@@ -168,13 +172,13 @@ class Consola:
         """
         sufijo = f" [{actual}]" if actual is not None else ""
         while True:
-            valor = input(f"{mensaje}{sufijo}: ").strip()
+            valor = ui.preguntar(f"{mensaje}{sufijo}: ").strip()
             if not valor and actual is not None:
                 return actual
             try:
                 return int(valor)
             except ValueError:
-                print("Ingrese un número entero.")
+                ui.aviso("Ingrese un número entero.")
 
     @classmethod
     def _pedir_id(cls, mensaje: str, actual: Optional[int] = None) -> int:
@@ -193,13 +197,13 @@ class Consola:
         if actual is not None:
             return cls._pedir_entero(mensaje, actual)
         while True:
-            valor = input(f"{mensaje} (Enter para cancelar): ").strip()
+            valor = ui.preguntar(f"{mensaje} (Enter para cancelar): ").strip()
             if not valor:
                 raise OperacionCancelada()
             try:
                 return int(valor)
             except ValueError:
-                print("Ingrese un número entero.")
+                ui.aviso("Ingrese un número entero.")
 
     @staticmethod
     def _pedir_decimal(mensaje: str, actual: Optional[float] = None) -> float:
@@ -214,13 +218,13 @@ class Consola:
         """
         sufijo = f" [{actual:g}]" if actual is not None else ""
         while True:
-            valor = input(f"{mensaje}{sufijo}: ").strip().replace(",", ".")
+            valor = ui.preguntar(f"{mensaje}{sufijo}: ").strip().replace(",", ".")
             if not valor and actual is not None:
                 return actual
             try:
                 return float(valor)
             except ValueError:
-                print("Ingrese un número válido.")
+                ui.aviso("Ingrese un número válido.")
 
     @staticmethod
     def _pedir_positivo_opcional(mensaje: str) -> Optional[float]:
@@ -233,16 +237,16 @@ class Consola:
             Optional[float]: Número ingresado, o None si se dejó vacío.
         """
         while True:
-            valor = input(mensaje).strip().replace(",", ".")
+            valor = ui.preguntar(mensaje).strip().replace(",", ".")
             if not valor:
                 return None
             try:
                 numero = float(valor)
             except ValueError:
-                print("Ingrese un número válido.")
+                ui.aviso("Ingrese un número válido.")
                 continue
             if numero <= 0:
-                print("El valor debe ser mayor a cero.")
+                ui.aviso("El valor debe ser mayor a cero.")
                 continue
             return numero
 
@@ -259,7 +263,8 @@ class Consola:
             Optional[Tuple[float, float]]: (compra, venta), o None si se
                 saltea.
         """
-        print(f"\nDólar {tipo.nombre} (Enter para saltear)")
+        ui.consola.print()
+        ui.info(f"Dólar {tipo.nombre} (Enter para saltear)")
         venta = cls._pedir_positivo_opcional("  Venta: ")
         if venta is None:
             return None
@@ -290,7 +295,7 @@ class Consola:
                     validar(valor)
                 return valor
             except ValueError as error:
-                print(f"[!] {error} Vuelva a ingresarlo.")
+                ui.error(f"{error} Vuelva a ingresarlo.")
 
     def _pedir_atributo(
         self,
@@ -348,13 +353,13 @@ class Consola:
         """
         por_defecto = actual or datetime.date.today()
         while True:
-            valor = input(f"{mensaje} [{por_defecto}]: ").strip()
+            valor = ui.preguntar(f"{mensaje} [{por_defecto}]: ").strip()
             if not valor:
                 return por_defecto
             try:
                 return texto_a_fecha(valor)
             except ValueError:
-                print("Formato inválido, use AAAA-MM-DD.")
+                ui.aviso("Formato inválido, use AAAA-MM-DD.")
 
     @staticmethod
     def _confirmar(mensaje: str) -> bool:
@@ -366,10 +371,10 @@ class Consola:
         Returns:
             bool: True si el usuario respondió "s", "si" o "sí".
         """
-        respuesta = input(f"{mensaje} (s/n): ").strip().lower()
+        respuesta = ui.preguntar(f"{mensaje} (s/n): ").strip().lower()
         if respuesta in ("s", "si", "sí"):
             return True
-        print("Se canceló la operación.")
+        ui.aviso("Se canceló la operación.")
         return False
 
     def _elegir_libro(self, actual: Optional[Libro] = None) -> Libro:
@@ -486,7 +491,7 @@ class Consola:
         self._menu_crud(
             "Inicio › Catálogo de libros",
             lambda: self._mostrar(servicio.listar()),
-            lambda: print(f"Registrado: {servicio.crear(datos())}"),
+            lambda: ui.exito(f"Registrado: {servicio.crear(datos())}"),
             lambda: self._modificacion(
                 servicio.actualizar, self._elegir_libro, datos
             ),
@@ -517,7 +522,7 @@ class Consola:
         self._menu_crud(
             "Inicio › Géneros literarios",
             lambda: self._mostrar(servicio.listar()),
-            lambda: print(f"Registrado: {servicio.crear(datos())}"),
+            lambda: ui.exito(f"Registrado: {servicio.crear(datos())}"),
             lambda: self._modificacion(
                 servicio.actualizar, self._elegir_genero, datos
             ),
@@ -545,7 +550,7 @@ class Consola:
         self._menu_crud(
             "Inicio › Casas editoriales",
             lambda: self._mostrar(servicio.listar()),
-            lambda: print(f"Registrada: {servicio.crear(datos())}"),
+            lambda: ui.exito(f"Registrada: {servicio.crear(datos())}"),
             lambda: self._modificacion(
                 servicio.actualizar, self._elegir_editorial, datos
             ),
@@ -578,7 +583,7 @@ class Consola:
         self._menu_crud(
             "Inicio › Monedas",
             lambda: self._mostrar(servicio.listar()),
-            lambda: print(f"Registrada: {servicio.crear(datos())}"),
+            lambda: ui.exito(f"Registrada: {servicio.crear(datos())}"),
             lambda: self._modificacion(
                 servicio.actualizar, self._elegir_moneda, datos
             ),
@@ -607,7 +612,7 @@ class Consola:
         self._menu_crud(
             "Inicio › Tipos de dólar",
             lambda: self._mostrar(servicio.listar()),
-            lambda: print(f"Registrado: {servicio.crear(datos())}"),
+            lambda: ui.exito(f"Registrado: {servicio.crear(datos())}"),
             lambda: self._modificacion(
                 servicio.actualizar, self._elegir_tipo, datos
             ),
@@ -617,8 +622,9 @@ class Consola:
         )
 
     def _menu_precios(self) -> None:
-        """CRUD de precios."""
+        """CRUD de precios, lista bimonetaria y exportación a CSV."""
         servicio = self.__servicios.precios
+        reportes = self.__servicios.reportes
 
         def datos(actual: Optional[Precio] = None) -> Precio:
             id = actual.id if actual else 0
@@ -638,10 +644,43 @@ class Consola:
             libro = self._elegir_libro()
             self._mostrar(servicio.listar_por_libro(libro.id))
 
+        def bimonetaria() -> None:
+            moneda = self._elegir_moneda()
+            tipo = self._elegir_tipo()
+            with ui.esperando("Consultando cotización ..."):
+                filas = reportes.lista_bimonetaria(moneda.id, tipo.id)
+            self._aviso_cotizacion()
+            cotizacion = self.__servicios.cotizaciones.ultima(tipo.id)
+            if not filas:
+                ui.aviso("No hay libros con precio.")
+                return
+            tabla = ui.nueva_tabla(
+                f"Lista de precios · ARS y {moneda.codigo}",
+                ("Libro", "left"), ("ARS", "right"),
+                (moneda.codigo, "right"),
+            )
+            tabla.caption = (
+                f"Dólar {tipo.nombre} $ {cotizacion.venta:,.2f} "
+                f"del {cotizacion.fecha}"
+            )
+            for libro, pesos, otra in filas:
+                tabla.add_row(
+                    libro.titulo, f"$ {pesos:,.2f}",
+                    f"{moneda.simbolo} {otra:,.2f}",
+                )
+            ui.consola.print(tabla)
+
+        def exportar() -> None:
+            tipo = self._elegir_tipo()
+            with ui.esperando("Consultando cotización ..."):
+                ruta = reportes.exportar_precios_csv(tipo.id)
+            self._aviso_cotizacion()
+            ui.exito(f"Precios exportados en todas las monedas a: {ruta}")
+
         self._menu_crud(
             "Inicio › Lista de precios",
             lambda: self._mostrar(servicio.listar()),
-            lambda: print(f"Registrado: {servicio.crear(datos())}"),
+            lambda: ui.exito(f"Registrado: {servicio.crear(datos())}"),
             lambda: self._modificacion(
                 servicio.actualizar,
                 lambda: self._elegir(servicio, "ID del precio", None),
@@ -650,7 +689,12 @@ class Consola:
             lambda: self._baja(
                 servicio.eliminar, self._pedir_id("ID del precio")
             ),
-            [("Ver los precios de un libro", por_libro)],
+            [
+                ("Ver los precios de un libro", por_libro),
+                ("Lista de precios bimonetaria (ARS y otra moneda)",
+                 bimonetaria),
+                ("Exportar precios a CSV (todas las monedas)", exportar),
+            ],
         )
 
     def _menu_stock(self) -> None:
@@ -680,12 +724,12 @@ class Consola:
                 self._elegir_libro,
                 lambda libro: servicio.verificar_sin_stock(libro.id),
             )
-            print(f"Registrado: {servicio.crear(datos(libro))}")
+            ui.exito(f"Registrado: {servicio.crear(datos(libro))}")
 
         def modificar() -> None:
             actual = elegir_stock()
             stock = datos(actual.libro, actual)
-            print(f"Cambios guardados: {servicio.actualizar(stock)}")
+            ui.exito(f"Cambios guardados: {servicio.actualizar(stock)}")
 
         def movimiento(ingreso: bool) -> None:
             stock = elegir_stock()
@@ -698,7 +742,7 @@ class Consola:
                 lambda: self._pedir_entero("Cantidad de ejemplares"), simular
             )
             operacion = servicio.ingresar if ingreso else servicio.retirar
-            print(f"Stock resultante: {operacion(stock.libro_id, unidades)}")
+            ui.exito(f"Stock resultante: {operacion(stock.libro_id, unidades)}")
 
         self._menu_crud(
             "Inicio › Depósito (stock)",
@@ -747,41 +791,42 @@ class Consola:
                 CotizacionDolar, "fecha", "Fecha", None, self._pedir_fecha,
                 validar=lambda fecha: servicio.verificar_fecha(tipo.id, fecha),
             )
-            print(f"Registrada: {servicio.crear(valores(tipo, fecha))}")
+            ui.exito(f"Registrada: {servicio.crear(valores(tipo, fecha))}")
 
         def modificar() -> None:
             tipo = self._elegir_tipo()
             historico = servicio.historico(tipo.id)
             self._mostrar(historico)
             if not historico:
-                print("No hay cotizaciones para modificar.")
+                ui.aviso("No hay cotizaciones para modificar.")
                 return
             actual = elegir_cotizacion(tipo)
             cotizacion = valores(tipo, actual.fecha, actual)
-            print(f"Cambios guardados: {servicio.actualizar(cotizacion)}")
+            ui.exito(f"Cambios guardados: {servicio.actualizar(cotizacion)}")
 
         def baja() -> None:
             tipo = self._elegir_tipo()
             historico = servicio.historico(tipo.id)
             self._mostrar(historico)
             if not historico:
-                print("No hay cotizaciones para eliminar.")
+                ui.aviso("No hay cotizaciones para eliminar.")
                 return
             fecha = elegir_cotizacion(tipo).fecha
             if self._confirmar("¿Seguro que desea eliminarla?"):
                 servicio.eliminar(tipo.id, fecha)
-                print("Cotización eliminada.")
+                ui.exito("Cotización eliminada.")
 
         def historico() -> None:
             self._mostrar(servicio.historico(self._elegir_tipo().id))
 
         def desde_api() -> None:
-            print("Conectando con dolarapi.com ...")
             try:
-                self._mostrar(servicio.obtener_cotizaciones())
+                with ui.esperando("Conectando con dolarapi.com ..."):
+                    cotizaciones = servicio.obtener_cotizaciones()
+                self._mostrar(cotizaciones)
                 return
-            except RuntimeError:
-                print(
+            except (ConfiguracionError, ApiCotizacionesError):
+                ui.aviso(
                     "No se pudo consultar dolarapi.com; "
                     "cargue los valores a mano."
                 )
@@ -803,7 +848,7 @@ class Consola:
             baja,
             [
                 ("Historial de un tipo de dólar", historico),
-                ("Traer cotizaciones del día (dolarapi.com)", desde_api),
+                ("Obtener las cotizaciones por API", desde_api),
             ],
         )
 
@@ -812,10 +857,10 @@ class Consola:
         cotizaciones = self.__servicios.cotizaciones
         if cotizaciones.en_tiempo_real and cotizaciones.ultima_consulta:
             hora = cotizaciones.ultima_consulta.strftime("%H:%M")
-            print(f"\nCotización en tiempo real (dolarapi.com, {hora} hs).")
+            ui.info(f"Cotización en tiempo real (dolarapi.com, {hora} hs).")
         else:
-            print(
-                "\nNo se pudo consultar dolarapi.com: se usa la última "
+            ui.aviso(
+                "No se pudo consultar dolarapi.com: se usa la última "
                 "cotización guardada."
             )
 
@@ -825,20 +870,28 @@ class Consola:
 
         def inventario() -> None:
             tipo = self._elegir_tipo()
-            print("Consultando cotización ...")
-            detalle, total = reportes.valor_inventario(tipo.id)
+            with ui.esperando("Consultando cotización ..."):
+                detalle, total = reportes.valor_inventario(tipo.id)
             self._aviso_cotizacion()
             cotizacion = self.__servicios.cotizaciones.ultima(tipo.id)
-            print(
-                f"Inventario valorizado con dólar {tipo.nombre} "
-                f"($ {cotizacion.venta:,.2f} del {cotizacion.fecha}):"
+            tabla = ui.nueva_tabla(
+                "Inventario valorizado en pesos",
+                ("Libro", "left"), ("Unidades", "right"),
+                ("Subtotal", "right"),
             )
+            tabla.caption = (
+                f"Dólar {tipo.nombre} $ {cotizacion.venta:,.2f} "
+                f"del {cotizacion.fecha}"
+            )
+            tabla.show_footer = True
+            tabla.columns[0].footer = "TOTAL"
+            tabla.columns[2].footer = f"$ {total:,.2f}"
             for stock, subtotal in detalle:
-                print(
-                    f"  {stock.libro.titulo:<40} {stock.cantidad:>4} u. "
-                    f"$ {subtotal:>14,.2f}"
+                tabla.add_row(
+                    stock.libro.titulo, str(stock.cantidad),
+                    f"$ {subtotal:,.2f}",
                 )
-            print(f"  {'TOTAL':<47} $ {total:>14,.2f}")
+            ui.consola.print(tabla)
 
         def bajo_minimo() -> None:
             self._mostrar(
@@ -848,17 +901,23 @@ class Consola:
 
         def cotizar_libro() -> None:
             libro = self._elegir_libro()
-            print("Consultando cotización ...")
-            filas = reportes.cotizar_libro(libro.id)
+            with ui.esperando("Consultando cotización ..."):
+                filas = reportes.cotizar_libro(libro.id)
             self._aviso_cotizacion()
             if not filas:
-                print("  El libro no tiene precios en moneda extranjera.")
+                ui.aviso("El libro no tiene precios en moneda extranjera.")
+                return
+            tabla = ui.nueva_tabla(
+                f"{libro.titulo} · precio según cada dólar",
+                ("Precio", "right"), ("Dólar", "left"),
+                ("Fecha", "left"), ("En pesos", "right"),
+            )
             for tipo, cotizacion, precio, pesos in filas:
-                print(
-                    f"  {precio.moneda.codigo} {precio.monto:,.2f} "
-                    f"x {tipo.nombre:<10} ({cotizacion.fecha}) "
-                    f"= $ {pesos:,.2f}"
+                tabla.add_row(
+                    f"{precio.moneda.codigo} {precio.monto:,.2f}",
+                    tipo.nombre, str(cotizacion.fecha), f"$ {pesos:,.2f}",
                 )
+            ui.consola.print(tabla)
 
         self._menu("Inicio › Informes", [
             ("Inventario valorizado en pesos", inventario),
@@ -877,7 +936,7 @@ class Consola:
             elegir (Callable): Función que elige el registro a modificar.
             datos (Callable): Función que pide los datos al usuario.
         """
-        print(f"Cambios guardados: {actualizar(datos(elegir()))}")
+        ui.exito(f"Cambios guardados: {actualizar(datos(elegir()))}")
 
     def _baja(
         self,
@@ -894,4 +953,4 @@ class Consola:
         """
         if self._confirmar(mensaje):
             eliminar(id)
-            print("Registro eliminado.")
+            ui.exito("Registro eliminado.")

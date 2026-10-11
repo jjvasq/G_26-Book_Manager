@@ -4,6 +4,11 @@ from __future__ import annotations
 import datetime
 from abc import ABC
 
+from book_manager.exceptions.exceptions import (
+    DatoInvalidoError,
+    StockInsuficienteError,
+)
+
 
 def texto_a_fecha(texto: str) -> datetime.date:
     """Convierte un texto con formato AAAA-MM-DD en una fecha.
@@ -20,7 +25,7 @@ def texto_a_fecha(texto: str) -> datetime.date:
     """
     partes = texto.strip().split("-")
     if len(partes) != 3:
-        raise ValueError(f"Fecha inválida: '{texto}'. Use AAAA-MM-DD.")
+        raise DatoInvalidoError(f"Fecha inválida: '{texto}'. Use AAAA-MM-DD.")
     anio, mes, dia = partes
     return datetime.date(int(anio), int(mes), int(dia))
 
@@ -36,7 +41,7 @@ def _validar_texto(valor: str, campo: str) -> str:
         str: El texto sin espacios atras o adelante.
     """
     if not isinstance(valor, str) or not valor.strip():
-        raise ValueError(f"El campo '{campo}' no puede estar vacío.")
+        raise DatoInvalidoError(f"El campo '{campo}' no puede estar vacío.")
     return valor.strip()
 
 
@@ -51,9 +56,9 @@ def _validar_decimal(valor: float, campo: str) -> float:
         float: El valor como float.
     """
     if isinstance(valor, bool) or not isinstance(valor, (int, float)):
-        raise ValueError(f"El campo '{campo}' debe ser numérico.")
+        raise DatoInvalidoError(f"El campo '{campo}' debe ser numérico.")
     if valor <= 0:
-        raise ValueError(f"El campo '{campo}' debe ser mayor a cero.")
+        raise DatoInvalidoError(f"El campo '{campo}' debe ser mayor a cero.")
     return float(valor)
 
 
@@ -69,9 +74,9 @@ def _validar_entero(valor: int, campo: str, minimo: int = 0) -> int:
         int: El valor validado.
     """
     if isinstance(valor, bool) or not isinstance(valor, int):
-        raise ValueError(f"El campo '{campo}' debe ser un número entero.")
+        raise DatoInvalidoError(f"El campo '{campo}' debe ser un número entero.")
     if valor < minimo:
-        raise ValueError(
+        raise DatoInvalidoError(
             f"El campo '{campo}' debe ser mayor o igual a {minimo}."
         )
     return valor
@@ -207,7 +212,7 @@ class Editorial(EntidadBase):
     def email(self, valor: str) -> None:
         valor = _validar_texto(valor, "email")
         if "@" not in valor or "." not in valor.split("@")[-1]:
-            raise ValueError("El email no tiene un formato válido.")
+            raise DatoInvalidoError("El email no tiene un formato válido.")
         self.__email: str = valor
 
     def __str__(self) -> str:
@@ -257,7 +262,7 @@ class Moneda(EntidadBase):
     def codigo(self, valor: str) -> None:
         valor = _validar_texto(valor, "código").upper()
         if len(valor) != 3 or not valor.isalpha():
-            raise ValueError("El código de moneda debe tener 3 letras.")
+            raise DatoInvalidoError("El código de moneda debe tener 3 letras.")
         self.__codigo: str = valor
 
     @property
@@ -393,7 +398,7 @@ class Libro(EntidadBase):
         )
         es_isbn13 = len(valor) == 13 and valor.isdigit()
         if not (es_isbn10 or es_isbn13):
-            raise ValueError("El ISBN debe tener 10 o 13 caracteres.")
+            raise DatoInvalidoError("El ISBN debe tener 10 o 13 caracteres.")
         self.__isbn: str = valor.upper()
 
     @property
@@ -423,7 +428,7 @@ class Libro(EntidadBase):
     def anio(self, valor: int) -> None:
         valor = _validar_entero(valor, "año", minimo=1450)
         if valor > datetime.date.today().year:
-            raise ValueError("El año de publicación no puede ser futuro.")
+            raise DatoInvalidoError("El año de publicación no puede ser futuro.")
         self.__anio: int = valor
 
     @property
@@ -434,7 +439,7 @@ class Libro(EntidadBase):
     @genero.setter
     def genero(self, valor: Genero) -> None:
         if not isinstance(valor, Genero):
-            raise ValueError("El género debe ser una instancia de Genero.")
+            raise DatoInvalidoError("El género debe ser una instancia de Genero.")
         self.__genero: Genero = valor
 
     @property
@@ -445,7 +450,7 @@ class Libro(EntidadBase):
     @editorial.setter
     def editorial(self, valor: Editorial) -> None:
         if not isinstance(valor, Editorial):
-            raise ValueError(
+            raise DatoInvalidoError(
                 "La editorial debe ser una instancia de Editorial."
             )
         self.__editorial: Editorial = valor
@@ -490,7 +495,7 @@ class Precio(EntidadBase):
     @libro.setter
     def libro(self, valor: Libro) -> None:
         if not isinstance(valor, Libro):
-            raise ValueError("El libro debe ser una instancia de Libro.")
+            raise DatoInvalidoError("El libro debe ser una instancia de Libro.")
         self.__libro: Libro = valor
 
     @property
@@ -501,7 +506,7 @@ class Precio(EntidadBase):
     @moneda.setter
     def moneda(self, valor: Moneda) -> None:
         if not isinstance(valor, Moneda):
-            raise ValueError("La moneda debe ser una instancia de Moneda.")
+            raise DatoInvalidoError("La moneda debe ser una instancia de Moneda.")
         self.__moneda: Moneda = valor
 
     @property
@@ -550,7 +555,7 @@ class Stock:
     @libro.setter
     def libro(self, valor: Libro) -> None:
         if not isinstance(valor, Libro):
-            raise ValueError("El libro debe ser una instancia de Libro.")
+            raise DatoInvalidoError("El libro debe ser una instancia de Libro.")
         self.__libro: Libro = valor
 
     @property
@@ -596,13 +601,11 @@ class Stock:
             unidades (int): Cantidad de unidades.
 
         Raises:
-            ValueError: Si no hay unidades suficientes.
+            StockInsuficienteError: Si no hay unidades suficientes.
         """
         unidades = _validar_entero(unidades, "unidades", minimo=1)
         if unidades > self.cantidad:
-            raise ValueError(
-                f"Stock insuficiente: hay {self.cantidad} unidades."
-            )
+            raise StockInsuficienteError(self.cantidad, unidades)
         self.cantidad -= unidades
 
     def __str__(self) -> str:
@@ -649,7 +652,7 @@ class CotizacionDolar:
     @tipo.setter
     def tipo(self, valor: TipoCotizacion) -> None:
         if not isinstance(valor, TipoCotizacion):
-            raise ValueError(
+            raise DatoInvalidoError(
                 "El tipo debe ser una instancia de TipoCotizacion."
             )
         self.__tipo: TipoCotizacion = valor
@@ -669,7 +672,7 @@ class CotizacionDolar:
         if isinstance(valor, datetime.datetime):
             valor = valor.date()
         if not isinstance(valor, datetime.date):
-            raise ValueError("La fecha debe ser un datetime.date.")
+            raise DatoInvalidoError("La fecha debe ser un datetime.date.")
         self.__fecha: datetime.date = valor
 
     @property

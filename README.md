@@ -93,16 +93,40 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-#### 4. Ejecución
+#### 4. Configuración (`.env` y contraseña)
 
-Desde un consola:
+La base de datos es PostgreSQL en Supabase. En la raíz del proyecto, el
+archivo `.env` define la URL de la API y la URL de conexión.
 
-ir al directorio `src`:
 ```bash
-# usa los datos existentes
+DATABASE_URL=postgresql://postgres.<id>:[YOUR-PASSWORD]@aws-1-<region>.pooler.supabase.com:5432/postgres
+API_URL=https://dolarapi.com/v1/dolares
+```
+
+La contraseña se carga como variable de entorno `SUPABASE_DB_PASSWORD`:
+
+```bash
+# Linux / macOS
+export SUPABASE_DB_PASSWORD="la_contraseña"
+# Windows (PowerShell)
+$env:SUPABASE_DB_PASSWORD = "la_contraseña"
+```
+
+En Colab se guarda como secret `SUPABASE_DB_PASSWORD` y se carga con
+`os.environ["SUPABASE_DB_PASSWORD"] = userdata.get("SUPABASE_DB_PASSWORD")`.
+
+#### 5. Ejecución
+
+Desde una consola, en el directorio `src`:
+
+```bash
+# inicia el sistema (si la base está vacía migra los datos del Sprint 1)
 python -m book_manager.main
 
-# precarga los datos de ejemplo
+# migra de nuevo los CSV del Sprint 1 y genera los .sql
+python -m book_manager.migrations.migrations
+
+# carga la base con los datos de ejemplo
 python -m book_manager.preload_data.preload_data
 ```
 
@@ -111,9 +135,12 @@ Desde un notebook:
 ```python
 from book_manager.main import main
 
-# usa los datos existentes
+# usa la base existente (la migra si está vacía)
 main(import_default_data=False)
 
-# regenera los datos de ejemplo
+# vuelve a migrar los datos del Sprint 1 desde los CSV
 main(import_default_data=True)
 ```
+
+Los precios exportados desde el menú *Lista de precios* se guardan en
+`src/book_manager/exports`.

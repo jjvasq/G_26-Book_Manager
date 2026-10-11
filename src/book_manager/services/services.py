@@ -22,7 +22,16 @@ from book_manager.entities.entities import (
     Stock,
     TipoCotizacion,
 )
+from book_manager.exceptions.exceptions import (
+    ApiCotizacionesError,
+    ConfiguracionError,
+    DatoInvalidoError,
+    RegistroDuplicadoError,
+    RegistroEnUsoError,
+    RegistroNoEncontradoError,
+)
 from book_manager.repositories.repositories import (
+    ArchivoCSV,
     IRepositorio,
     IRepositorioCotizacionDolar,
     IRepositorioStock,
@@ -34,11 +43,20 @@ from book_manager.repositories.repositories import (
 
 T = TypeVar("T", bound=EntidadBase)
 
+# Carpeta donde se guardan los CSV de precios exportados.
+CARPETA_EXPORTACION = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "exports"
+)
+
 # Variable del archivo .env con la URL de DolarApi.
 VARIABLE_API_URL = "API_URL"
 
 # Minutos durante los que una consulta a DolarApi se considera vigente.
 MINUTOS_VIGENCIA_COTIZACION = 5
+
+# Identificación que se envía a DolarApi; algunos servidores rechazan el
+# agente por defecto de requests.
+AGENTE_HTTP = "BookManager/1.0 (+https://dolarapi.com)"
 
 CASAS_DOLAR_API: Dict[str, str] = {
     "oficial": "Oficial",
@@ -81,11 +99,11 @@ class ServicioCRUD(Generic[T]):
             T: El registro encontrado.
 
         Raises:
-            ValueError: Si no existe.
+            RegistroNoEncontradoError: Si no existe.
         """
         entidad = self.__repositorio.leer_por_id(id)
         if entidad is None:
-            raise ValueError(f"No existe un registro con ID {id}.")
+            raise RegistroNoEncontradoError(f"No existe un registro con ID {id}.")
         return entidad
 
     def crear(self, entidad: T) -> T:
@@ -155,12 +173,12 @@ class ServicioCRUD(Generic[T]):
                 error.
 
         Raises:
-            ValueError: Si otro registro ya tiene ese valor.
+            RegistroDuplicadoError: Si otro registro ya tiene ese valor.
         """
         valor = valor.strip().lower()
         for otra in self.__repositorio.leer_todos():
             if otra.id != id and atributo(otra).lower() == valor:
-                raise ValueError(
+                raise RegistroDuplicadoError(
                     f"Ya existe un registro con ese {descripcion}."
                 )
 
@@ -189,7 +207,7 @@ class ServicioGenero(ServicioCRUD[Genero]):
             id (int): ID del registro que lo usa (0 si es un alta).
 
         Raises:
-            ValueError: Si el nombre ya está en uso.
+            RegistroDuplicadoError: Si el nombre ya está en uso.
         """
         self._verificar_unico(nombre, id, lambda e: e.nombre, "nombre")
 
@@ -211,12 +229,12 @@ class ServicioGenero(ServicioCRUD[Genero]):
             id (int): ID del registro.
 
         Raises:
-            ValueError: Si hay registros que dependen de este.
+            RegistroEnUsoError: Si hay registros que dependen de este.
         """
         if any(
             libro.genero.id == id for libro in self.__repo_libro.leer_todos()
         ):
-            raise ValueError(
+            raise RegistroEnUsoError(
                 "No se puede eliminar: hay libros con ese género."
             )
 
@@ -247,7 +265,7 @@ class ServicioEditorial(ServicioCRUD[Editorial]):
             id (int): ID del registro que lo usa (0 si es un alta).
 
         Raises:
-            ValueError: Si el nombre ya está en uso.
+            RegistroDuplicadoError: Si el nombre ya está en uso.
         """
         self._verificar_unico(nombre, id, lambda e: e.nombre, "nombre")
 
@@ -269,11 +287,11 @@ class ServicioEditorial(ServicioCRUD[Editorial]):
             id (int): ID del registro.
 
         Raises:
-            ValueError: Si hay registros que dependen de este.
+            RegistroEnUsoError: Si hay registros que dependen de este.
         """
         libros = self.__repo_libro.leer_todos()
         if any(libro.editorial.id == id for libro in libros):
-            raise ValueError(
+            raise RegistroEnUsoError(
                 "No se puede eliminar: hay libros de esa editorial."
             )
 
@@ -304,7 +322,7 @@ class ServicioMoneda(ServicioCRUD[Moneda]):
             id (int): ID de la moneda que lo usa (0 si es un alta).
 
         Raises:
-            ValueError: Si el código ya está en uso.
+            RegistroDuplicadoError: Si el código ya está en uso.
         """
         self._verificar_unico(codigo, id, lambda e: e.codigo, "código")
 
@@ -326,10 +344,10 @@ class ServicioMoneda(ServicioCRUD[Moneda]):
             id (int): ID del registro.
 
         Raises:
-            ValueError: Si hay registros que dependen de este.
+            RegistroEnUsoError: Si hay registros que dependen de este.
         """
         if self.__repo_precio.leer_por_moneda(id):
-            raise ValueError(
+            raise RegistroEnUsoError(
                 "No se puede eliminar: hay precios en esa moneda."
             )
 
@@ -376,7 +394,7 @@ class ServicioTipoCotizacion(ServicioCRUD[TipoCotizacion]):
             id (int): ID del registro que lo usa (0 si es un alta).
 
         Raises:
-            ValueError: Si el nombre ya está en uso.
+            RegistroDuplicadoError: Si el nombre ya está en uso.
         """
         self._verificar_unico(nombre, id, lambda e: e.nombre, "nombre")
 
@@ -398,10 +416,10 @@ class ServicioTipoCotizacion(ServicioCRUD[TipoCotizacion]):
             id (int): ID del registro.
 
         Raises:
-            ValueError: Si hay registros que dependen de este.
+            RegistroEnUsoError: Si hay registros que dependen de este.
         """
         if self.__repo_cotizacion.leer_historico_por_tipo(id):
-            raise ValueError(
+            raise RegistroEnUsoError(
                 "No se puede eliminar: hay cotizaciones de ese tipo."
             )
 
@@ -456,11 +474,11 @@ class ServicioLibro(ServicioCRUD[Libro]):
             id (int): ID del libro que lo usa (0 si es un alta).
 
         Raises:
-            ValueError: Si el ISBN ya lo tiene otro libro.
+            RegistroDuplicadoError: Si el ISBN ya lo tiene otro libro.
         """
         existente = self.__repo_libro.leer_por_isbn(isbn)
         if existente is not None and existente.id != id:
-            raise ValueError("Ya existe un libro con ese ISBN.")
+            raise RegistroDuplicadoError("Ya existe un libro con ese ISBN.")
 
     def _validar(self, entidad: Libro) -> None:
         """Valida las reglas de negocio antes de guardar.
@@ -519,11 +537,11 @@ class ServicioPrecio(ServicioCRUD[Precio]):
             id (int): ID del precio (0 si es un alta).
 
         Raises:
-            ValueError: Si el libro ya tiene un precio en esa moneda.
+            RegistroDuplicadoError: Si el libro ya tiene un precio en esa moneda.
         """
         for otro in self.__repo_precio.leer_por_libro(libro_id):
             if otro.id != id and otro.moneda.id == moneda_id:
-                raise ValueError(
+                raise RegistroDuplicadoError(
                     "El libro ya tiene un precio en esa moneda; modifíquelo."
                 )
 
@@ -568,11 +586,11 @@ class ServicioStock:
             Stock: El registro encontrado.
 
         Raises:
-            ValueError: Si el libro no tiene stock registrado.
+            RegistroNoEncontradoError: Si el libro no tiene stock registrado.
         """
         stock = self.__repositorio.leer_por_libro(libro_id)
         if stock is None:
-            raise ValueError(f"El libro {libro_id} no tiene stock registrado.")
+            raise RegistroNoEncontradoError(f"El libro {libro_id} no tiene stock registrado.")
         return stock
 
     def verificar_sin_stock(self, libro_id: int) -> None:
@@ -582,10 +600,10 @@ class ServicioStock:
             libro_id (int): ID del libro.
 
         Raises:
-            ValueError: Si el libro ya tiene stock.
+            RegistroDuplicadoError: Si el libro ya tiene stock.
         """
         if self.__repositorio.leer_por_libro(libro_id) is not None:
-            raise ValueError(
+            raise RegistroDuplicadoError(
                 f"Ya existe stock para el libro {libro_id}; modifíquelo."
             )
 
@@ -676,6 +694,7 @@ class ServicioCotizacionDolar:
         self.__repositorio: IRepositorioCotizacionDolar = repositorio
         self.__servicio_tipo: ServicioTipoCotizacion = servicio_tipo
         self.__ultima_consulta: Optional[datetime.datetime] = None
+        self.__ultimo_error: Optional[str] = None
         load_dotenv(ARCHIVO_ENV)
         self.__api_url: Optional[str] = os.getenv(VARIABLE_API_URL)
 
@@ -683,6 +702,11 @@ class ServicioCotizacionDolar:
     def ultima_consulta(self) -> Optional[datetime.datetime]:
         """Momento de la última consulta exitosa a DolarApi."""
         return self.__ultima_consulta
+
+    @property
+    def ultimo_error(self) -> Optional[str]:
+        """Motivo por el que falló la última consulta a DolarApi."""
+        return self.__ultimo_error
 
     @property
     def api_url(self) -> Optional[str]:
@@ -712,8 +736,9 @@ class ServicioCotizacionDolar:
         if self.en_tiempo_real:
             return True
         try:
-            self.obtener_cotizaciones(timeout=5)
-        except RuntimeError:
+            self.obtener_cotizaciones()
+        except (ConfiguracionError, ApiCotizacionesError) as error:
+            self.__ultimo_error = str(error)
             return False
         return True
 
@@ -749,11 +774,11 @@ class ServicioCotizacionDolar:
             CotizacionDolar: El registro encontrado.
 
         Raises:
-            ValueError: Si no existe.
+            RegistroNoEncontradoError: Si no existe.
         """
         cotizacion = self.__repositorio.leer_por_tipo_y_fecha(tipo_id, fecha)
         if cotizacion is None:
-            raise ValueError("No existe una cotización para ese tipo y fecha.")
+            raise RegistroNoEncontradoError("No existe una cotización para ese tipo y fecha.")
         return cotizacion
 
     def ultima(self, tipo_id: int) -> CotizacionDolar:
@@ -766,11 +791,11 @@ class ServicioCotizacionDolar:
             CotizacionDolar: La cotización más reciente.
 
         Raises:
-            ValueError: Si no hay cotizaciones de ese tipo.
+            RegistroNoEncontradoError: Si no hay cotizaciones de ese tipo.
         """
         historico = self.historico(tipo_id)
         if not historico:
-            raise ValueError("No hay cotizaciones cargadas para ese tipo.")
+            raise RegistroNoEncontradoError("No hay cotizaciones cargadas para ese tipo.")
         return max(historico, key=lambda c: c.fecha)
 
     def crear(self, cotizacion: CotizacionDolar) -> CotizacionDolar:
@@ -797,9 +822,9 @@ class ServicioCotizacionDolar:
                 ese tipo en esa fecha.
         """
         if fecha > datetime.date.today():
-            raise ValueError("No se pueden cargar cotizaciones futuras.")
+            raise DatoInvalidoError("No se pueden cargar cotizaciones futuras.")
         if self.__repositorio.leer_por_tipo_y_fecha(tipo_id, fecha):
-            raise ValueError(
+            raise RegistroDuplicadoError(
                 "Ya existe una cotización de ese tipo en esa fecha."
             )
 
@@ -840,27 +865,36 @@ class ServicioCotizacionDolar:
             List[CotizacionDolar]: Cotizaciones creadas o actualizadas.
 
         Raises:
-            RuntimeError: Si falta API_URL en el .env o no se pudo
+            ConfiguracionError, ApiCotizacionesError: Si falta API_URL en el .env o no se pudo
                 consultar la API.
         """
         if not self.__api_url:
-            raise RuntimeError(
+            raise ConfiguracionError(
                 f"Falta la variable {VARIABLE_API_URL} en el archivo .env."
             )
         try:
-            respuesta = requests.get(self.__api_url, timeout=timeout)
+            respuesta = requests.get(
+                self.__api_url,
+                timeout=timeout,
+                headers={"User-Agent": AGENTE_HTTP, "Accept": "application/json"},
+            )
             respuesta.raise_for_status()
             datos = respuesta.json()
         except (requests.RequestException, ValueError) as error:
-            raise RuntimeError(
+            raise ApiCotizacionesError(
                 f"No se pudo consultar la cotización: {error}"
             ) from error
 
         self.__ultima_consulta = datetime.datetime.now()
+        self.__ultimo_error = None
+        tipos = {
+            tipo.nombre.lower(): tipo
+            for tipo in self.__servicio_tipo.listar()
+        }
         registradas: List[CotizacionDolar] = []
         for dato in datos:
             nombre = CASAS_DOLAR_API.get(dato.get("casa", ""))
-            tipo = self.__servicio_tipo.buscar_por_nombre(nombre or "")
+            tipo = tipos.get((nombre or "").lower())
             venta = dato.get("venta")
             if tipo is None or not venta:
                 continue
@@ -870,9 +904,9 @@ class ServicioCotizacionDolar:
                 or datetime.date.today().isoformat()
             )
             registradas.append(
-                self.__registrar(tipo, fecha, float(compra), float(venta))
+                CotizacionDolar(tipo, fecha, float(compra), float(venta))
             )
-        return registradas
+        return self.__repositorio.guardar_varias(registradas)
 
     def registrar_manual(
         self, tipo: TipoCotizacion, compra: float, venta: float
@@ -949,6 +983,7 @@ class ServicioReportes:
         servicio_stock: ServicioStock,
         servicio_cotizacion: ServicioCotizacionDolar,
         servicio_tipo: ServicioTipoCotizacion,
+        servicio_moneda: ServicioMoneda,
     ) -> None:
         """Constructor.
 
@@ -960,12 +995,14 @@ class ServicioReportes:
                 cotizaciones.
             servicio_tipo (ServicioTipoCotizacion): Servicio de tipos de
                 cotización.
+            servicio_moneda (ServicioMoneda): Servicio de monedas.
         """
         self.__libros: ServicioLibro = servicio_libro
         self.__precios: ServicioPrecio = servicio_precio
         self.__stock: ServicioStock = servicio_stock
         self.__cotizaciones: ServicioCotizacionDolar = servicio_cotizacion
         self.__tipos: ServicioTipoCotizacion = servicio_tipo
+        self.__monedas: ServicioMoneda = servicio_moneda
 
     def precio_en_pesos(self, libro_id: int, tipo_id: int) -> Optional[float]:
         """Precio de referencia del libro en pesos.
@@ -984,11 +1021,169 @@ class ServicioReportes:
         precios = self.__precios.listar_por_libro(libro_id)
         if not precios:
             return None
-        precios.sort(key=lambda p: not p.moneda.es_local)
-        precio = precios[0]
-        return self.__cotizaciones.convertir_a_pesos(
-            precio.monto, precio.moneda, tipo_id
+        return self.__en_pesos(
+            precios, self.__cotizaciones.ultima(tipo_id)
         )
+
+    def precio_en_moneda(
+        self, libro_id: int, moneda: Moneda, tipo_id: int
+    ) -> Optional[float]:
+        """Precio del libro expresado en una moneda.
+
+        Si el libro tiene un precio cargado en esa moneda se usa ese; si
+        no, se convierte su precio en pesos con la cotización indicada.
+
+        Args:
+            libro_id (int): ID del libro.
+            moneda (Moneda): Moneda en la que se quiere el precio.
+            tipo_id (int): ID del tipo de cotización.
+
+        Returns:
+            Optional[float]: Precio en la moneda, o None si el libro no
+                tiene precios.
+        """
+        precios = self.__precios.listar_por_libro(libro_id)
+        if not precios:
+            return None
+        return self.__en_moneda(
+            precios, moneda, self.__cotizaciones.ultima(tipo_id)
+        )
+
+    @staticmethod
+    def __en_pesos(
+        precios: List[Precio], cotizacion: CotizacionDolar
+    ) -> float:
+        """Precio de referencia en pesos a partir de los precios cargados.
+
+        Args:
+            precios (List[Precio]): Precios del libro (al menos uno).
+            cotizacion (CotizacionDolar): Cotización para convertir.
+
+        Returns:
+            float: Precio en pesos.
+        """
+        precio = min(precios, key=lambda p: not p.moneda.es_local)
+        if precio.moneda.es_local:
+            return precio.monto
+        return precio.monto * precio.moneda.equivalencia_usd * (
+            cotizacion.venta
+        )
+
+    @classmethod
+    def __en_moneda(
+        cls,
+        precios: List[Precio],
+        moneda: Moneda,
+        cotizacion: CotizacionDolar,
+    ) -> float:
+        """Precio en una moneda a partir de los precios cargados.
+
+        Args:
+            precios (List[Precio]): Precios del libro (al menos uno).
+            moneda (Moneda): Moneda en la que se quiere el precio.
+            cotizacion (CotizacionDolar): Cotización para convertir.
+
+        Returns:
+            float: Precio en la moneda.
+        """
+        for precio in precios:
+            if precio.moneda.id == moneda.id:
+                return precio.monto
+        pesos = cls.__en_pesos(precios, cotizacion)
+        if moneda.es_local:
+            return pesos
+        return pesos / (moneda.equivalencia_usd * cotizacion.venta)
+
+    def __precios_por_libro(self) -> Dict[int, List[Precio]]:
+        """Lee todos los precios en una sola consulta, agrupados por libro.
+
+        Returns:
+            Dict[int, List[Precio]]: Precios de cada libro por su ID.
+        """
+        agrupados: Dict[int, List[Precio]] = {}
+        for precio in self.__precios.listar():
+            agrupados.setdefault(precio.libro.id, []).append(precio)
+        return agrupados
+
+    def lista_bimonetaria(
+        self, moneda_id: int, tipo_id: int
+    ) -> List[Tuple[Libro, float, float]]:
+        """Lista de precios de los libros en pesos y en otra moneda.
+
+        Antes de calcular se actualizan las cotizaciones desde DolarApi;
+        si no hay conexión se usa la última cotización guardada.
+
+        Args:
+            moneda_id (int): ID de la moneda a mostrar junto a los pesos.
+            tipo_id (int): ID del tipo de cotización para convertir.
+
+        Returns:
+            List[Tuple[Libro, float, float]]: Filas (libro, precio en
+                pesos, precio en la moneda elegida) de los libros que
+                tienen precio.
+        """
+        moneda = self.__monedas.obtener(moneda_id)
+        self.__tipos.obtener(tipo_id)
+        self.__cotizaciones.refrescar()
+        cotizacion = self.__cotizaciones.ultima(tipo_id)
+        precios = self.__precios_por_libro()
+        filas = []
+        for libro in self.__libros.listar():
+            del_libro = precios.get(libro.id)
+            if not del_libro:
+                continue
+            filas.append((
+                libro,
+                self.__en_pesos(del_libro, cotizacion),
+                self.__en_moneda(del_libro, moneda, cotizacion),
+            ))
+        return filas
+
+    def exportar_precios_csv(
+        self, tipo_id: int, carpeta: str = CARPETA_EXPORTACION
+    ) -> str:
+        """Exporta a CSV el precio de cada libro en todas las monedas.
+
+        Se genera una columna por cada moneda activa, con el precio
+        convertido usando la cotización indicada.
+
+        Args:
+            tipo_id (int): ID del tipo de cotización para convertir.
+            carpeta (str): Carpeta donde se guarda el archivo.
+
+        Returns:
+            str: Ruta del archivo generado.
+        """
+        tipo = self.__tipos.obtener(tipo_id)
+        self.__cotizaciones.refrescar()
+        cotizacion = self.__cotizaciones.ultima(tipo_id)
+        monedas = self.__monedas.listar()
+        precios = self.__precios_por_libro()
+        campos = ["libro_id", "isbn", "titulo", "tipo_dolar", "fecha_dolar"]
+        campos += [moneda.codigo for moneda in monedas]
+        filas: List[Dict[str, object]] = []
+        for libro in self.__libros.listar():
+            del_libro = precios.get(libro.id)
+            if not del_libro:
+                continue
+            fila: Dict[str, object] = {
+                "libro_id": libro.id,
+                "isbn": libro.isbn,
+                "titulo": libro.titulo,
+                "tipo_dolar": tipo.nombre,
+                "fecha_dolar": cotizacion.fecha,
+            }
+            for moneda in monedas:
+                monto = self.__en_moneda(del_libro, moneda, cotizacion)
+                fila[moneda.codigo] = f"{monto:.2f}"
+            filas.append(fila)
+        os.makedirs(carpeta, exist_ok=True)
+        nombre = datetime.datetime.now().strftime(
+            "precios_%Y%m%d_%H%M%S.csv"
+        )
+        archivo = ArchivoCSV(nombre, campos, carpeta)
+        archivo.escribir(filas)
+        return archivo.ruta
 
     def valor_inventario(
         self, tipo_id: int
@@ -1005,10 +1200,13 @@ class ServicioReportes:
             Tupla con el detalle (stock, subtotal) y el total general.
         """
         self.__cotizaciones.refrescar()
+        cotizacion = self.__cotizaciones.ultima(tipo_id)
+        precios = self.__precios_por_libro()
         detalle: List[Tuple[Stock, float]] = []
         for stock in self.__stock.listar():
-            precio = self.precio_en_pesos(stock.libro_id, tipo_id)
-            if precio is not None:
+            del_libro = precios.get(stock.libro_id)
+            if del_libro:
+                precio = self.__en_pesos(del_libro, cotizacion)
                 detalle.append((stock, precio * stock.cantidad))
         return detalle, sum(subtotal for _, subtotal in detalle)
 
@@ -1030,15 +1228,22 @@ class ServicioReportes:
         """
         self.__libros.obtener(libro_id)
         self.__cotizaciones.refrescar()
-        filas = []
-        for precio in self.__precios.listar_por_libro(libro_id):
-            if precio.moneda.es_local:
-                continue
+        extranjeros = [
+            precio for precio in self.__precios.listar_por_libro(libro_id)
+            if not precio.moneda.es_local
+        ]
+        ultimas: List[Tuple[TipoCotizacion, CotizacionDolar]] = []
+        if extranjeros:
             for tipo in self.__tipos.listar():
                 try:
-                    cotizacion = self.__cotizaciones.ultima(tipo.id)
+                    ultimas.append(
+                        (tipo, self.__cotizaciones.ultima(tipo.id))
+                    )
                 except ValueError:
                     continue
+        filas = []
+        for precio in extranjeros:
+            for tipo, cotizacion in ultimas:
                 pesos = precio.monto * precio.moneda.equivalencia_usd * (
                     cotizacion.venta
                 )
@@ -1075,16 +1280,17 @@ def crear_servicios(repos: Repositorios) -> Servicios:
     precios = ServicioPrecio(repos.precios)
     stock = ServicioStock(repos.stock)
     cotizaciones = ServicioCotizacionDolar(repos.cotizaciones, tipos)
+    monedas = ServicioMoneda(repos.monedas, repos.precios)
     return Servicios(
         generos=ServicioGenero(repos.generos, repos.libros),
         editoriales=ServicioEditorial(repos.editoriales, repos.libros),
-        monedas=ServicioMoneda(repos.monedas, repos.precios),
+        monedas=monedas,
         tipos_cotizacion=tipos,
         libros=libros,
         precios=precios,
         stock=stock,
         cotizaciones=cotizaciones,
         reportes=ServicioReportes(
-            libros, precios, stock, cotizaciones, tipos
+            libros, precios, stock, cotizaciones, tipos, monedas
         ),
     )

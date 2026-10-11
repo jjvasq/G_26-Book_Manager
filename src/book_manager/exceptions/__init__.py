@@ -1,0 +1,1 @@
+"""Excepciones personalizadas del sistema."""

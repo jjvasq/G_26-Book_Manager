@@ -111,8 +111,12 @@ class LibroModel(ModeloConEstado, Base):
         ForeignKey("editoriales.id"), nullable=False
     )
 
-    genero: Mapped[GeneroModel] = relationship(back_populates="libros")
-    editorial: Mapped[EditorialModel] = relationship(back_populates="libros")
+    genero: Mapped[GeneroModel] = relationship(
+        back_populates="libros", lazy="joined"
+    )
+    editorial: Mapped[EditorialModel] = relationship(
+        back_populates="libros", lazy="joined"
+    )
     precios: Mapped[List[PrecioModel]] = relationship(back_populates="libro")
     stock: Mapped[Optional[StockModel]] = relationship(
         back_populates="libro"
@@ -134,8 +138,12 @@ class PrecioModel(ModeloConEstado, Base):
     )
     monto: Mapped[float] = mapped_column(Float, nullable=False)
 
-    libro: Mapped[LibroModel] = relationship(back_populates="precios")
-    moneda: Mapped[MonedaModel] = relationship(back_populates="precios")
+    libro: Mapped[LibroModel] = relationship(
+        back_populates="precios", lazy="joined"
+    )
+    moneda: Mapped[MonedaModel] = relationship(
+        back_populates="precios", lazy="joined"
+    )
 
 
 class StockModel(ModeloConEstado, Base):
@@ -155,7 +163,9 @@ class StockModel(ModeloConEstado, Base):
         Integer, nullable=False, default=0
     )
 
-    libro: Mapped[LibroModel] = relationship(back_populates="stock")
+    libro: Mapped[LibroModel] = relationship(
+        back_populates="stock", lazy="joined"
+    )
 
 
 class CotizacionDolarModel(ModeloConEstado, Base):
@@ -175,7 +185,7 @@ class CotizacionDolarModel(ModeloConEstado, Base):
     venta: Mapped[float] = mapped_column(Float, nullable=False)
 
     tipo: Mapped[TipoCotizacionModel] = relationship(
-        back_populates="cotizaciones"
+        back_populates="cotizaciones", lazy="joined"
     )
 
 

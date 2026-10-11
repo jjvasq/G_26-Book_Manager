@@ -15,7 +15,7 @@ import datetime
 from dataclasses import dataclass
 from typing import Dict, Generic, List, Optional, Type, TypeVar
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, select, tuple_
 from sqlalchemy.orm import Session
 
 from book_manager.database.connection import ConexionDB
@@ -29,6 +29,10 @@ from book_manager.entities.entities import (
     Precio,
     Stock,
     TipoCotizacion,
+)
+from book_manager.exceptions.exceptions import (
+    RegistroDuplicadoError,
+    RegistroNoEncontradoError,
 )
 from book_manager.models.models import (
     Base,
@@ -64,7 +68,7 @@ class IRepositorio(abc.ABC, Generic[T]):
             T: La entidad creada.
 
         Raises:
-            ValueError: Si ya existe una entidad con el mismo ID.
+            RegistroDuplicadoError: Si ya existe una entidad con el mismo ID.
         """
         pass
 
@@ -100,7 +104,7 @@ class IRepositorio(abc.ABC, Generic[T]):
             T: La entidad actualizada.
 
         Raises:
-            ValueError: Si no se encuentra la entidad para actualizar.
+            RegistroNoEncontradoError: Si no se encuentra la entidad para actualizar.
         """
         pass
 
@@ -131,7 +135,7 @@ class IRepositorioStock(abc.ABC):
             Stock: El objeto Stock creado.
 
         Raises:
-            ValueError: Si ya existe un registro de stock para el mismo libro.
+            RegistroDuplicadoError: Si ya existe un registro de stock para el mismo libro.
         """
         pass
 
@@ -160,7 +164,7 @@ class IRepositorioStock(abc.ABC):
             Stock: El objeto Stock actualizado.
 
         Raises:
-            ValueError: Si no se encuentra el stock para actualizar.
+            RegistroNoEncontradoError: Si no se encuentra el stock para actualizar.
         """
         pass
 
@@ -191,7 +195,7 @@ class IRepositorioCotizacionDolar(abc.ABC):
             CotizacionDolar: El objeto CotizacionDolar creado.
 
         Raises:
-            ValueError: Si ya existe una cotización para el mismo tipo y fecha.
+            RegistroDuplicadoError: Si ya existe una cotización para el mismo tipo y fecha.
         """
         pass
 
@@ -248,6 +252,20 @@ class IRepositorioCotizacionDolar(abc.ABC):
 
         Returns:
             bool: True si la cotización fue eliminada, False si no se encontró.
+        """
+        pass
+
+    @abc.abstractmethod
+    def guardar_varias(
+        self, cotizaciones: List['CotizacionDolar']
+    ) -> List['CotizacionDolar']:
+        """Crea o actualiza varias cotizaciones en una sola transacción.
+
+        Args:
+            cotizaciones (List[CotizacionDolar]): Cotizaciones a guardar.
+
+        Returns:
+            List[CotizacionDolar]: Las cotizaciones guardadas.
         """
         pass
 
@@ -528,12 +546,12 @@ class RepositorioSQL(IRepositorio[T]):
             T: La entidad creada, con su ID.
 
         Raises:
-            ValueError: Si ya existe un registro con el mismo ID (aunque
+            RegistroDuplicadoError: Si ya existe un registro con el mismo ID (aunque
                 esté borrado).
         """
         with self._conexion.transaccion() as sesion:
             if entidad.id and sesion.get(self.MODELO, entidad.id):
-                raise ValueError(
+                raise RegistroDuplicadoError(
                     f"Ya existe una entidad con ID {entidad.id}."
                 )
             modelo = self.MODELO(estado=ACTIVO)
@@ -581,12 +599,12 @@ class RepositorioSQL(IRepositorio[T]):
             T: La entidad actualizada.
 
         Raises:
-            ValueError: Si no existe un registro activo con ese ID.
+            RegistroNoEncontradoError: Si no existe un registro activo con ese ID.
         """
         with self._conexion.transaccion() as sesion:
             modelo = self._modelo_activo(sesion, entidad.id)
             if modelo is None:
-                raise ValueError(
+                raise RegistroNoEncontradoError(
                     f"No existe una entidad con ID {entidad.id}."
                 )
             self._copiar(entidad, modelo)
@@ -892,12 +910,12 @@ class RepositorioStock(IRepositorioStock):
             Stock: La entidad creada.
 
         Raises:
-            ValueError: Si el libro ya tiene stock activo.
+            RegistroDuplicadoError: Si el libro ya tiene stock activo.
         """
         with self.__conexion.transaccion() as sesion:
             modelo = sesion.get(StockModel, stock.libro_id)
             if modelo is not None and modelo.estado == ACTIVO:
-                raise ValueError("El libro ya tiene stock registrado.")
+                raise RegistroDuplicadoError("El libro ya tiene stock registrado.")
             if modelo is None:
                 modelo = StockModel(libro_id=stock.libro_id)
                 sesion.add(modelo)
@@ -944,12 +962,12 @@ class RepositorioStock(IRepositorioStock):
             Stock: La entidad actualizada.
 
         Raises:
-            ValueError: Si el libro no tiene stock activo.
+            RegistroNoEncontradoError: Si el libro no tiene stock activo.
         """
         with self.__conexion.transaccion() as sesion:
             modelo = self._activo(sesion, stock.libro_id)
             if modelo is None:
-                raise ValueError("El libro no tiene stock registrado.")
+                raise RegistroNoEncontradoError("El libro no tiene stock registrado.")
             modelo.cantidad = stock.cantidad
             modelo.stock_minimo = stock.stock_minimo
         return stock
@@ -1038,14 +1056,14 @@ class RepositorioCotizacionDolar(IRepositorioCotizacionDolar):
             CotizacionDolar: La entidad creada.
 
         Raises:
-            ValueError: Si ya existe una cotización activa para ese tipo y
+            RegistroDuplicadoError: Si ya existe una cotización activa para ese tipo y
                 fecha.
         """
         clave = (cotizacion.tipo_id, cotizacion.fecha)
         with self.__conexion.transaccion() as sesion:
             modelo = sesion.get(CotizacionDolarModel, clave)
             if modelo is not None and modelo.estado == ACTIVO:
-                raise ValueError(
+                raise RegistroDuplicadoError(
                     "Ya existe una cotización para ese tipo y fecha."
                 )
             if modelo is None:
@@ -1104,12 +1122,12 @@ class RepositorioCotizacionDolar(IRepositorioCotizacionDolar):
             CotizacionDolar: La entidad actualizada.
 
         Raises:
-            ValueError: Si no existe la cotización activa.
+            RegistroNoEncontradoError: Si no existe la cotización activa.
         """
         with self.__conexion.transaccion() as sesion:
             modelo = self._activa(sesion, cotizacion.tipo_id, cotizacion.fecha)
             if modelo is None:
-                raise ValueError(
+                raise RegistroNoEncontradoError(
                     "No existe una cotización para ese tipo y fecha."
                 )
             modelo.compra = cotizacion.compra
@@ -1133,6 +1151,49 @@ class RepositorioCotizacionDolar(IRepositorioCotizacionDolar):
                 return False
             modelo.estado = BORRADO
         return True
+
+    def guardar_varias(
+        self, cotizaciones: List[CotizacionDolar]
+    ) -> List[CotizacionDolar]:
+        """Crea o actualiza varias cotizaciones en una sola transacción.
+
+        Si ya hay una cotización (aunque esté borrada) para ese tipo y
+        fecha, se actualizan sus valores y queda activa.
+
+        Args:
+            cotizaciones (List[CotizacionDolar]): Cotizaciones a guardar.
+
+        Returns:
+            List[CotizacionDolar]: Las cotizaciones guardadas.
+        """
+        if not cotizaciones:
+            return cotizaciones
+        claves = [(c.tipo_id, c.fecha) for c in cotizaciones]
+        with self.__conexion.transaccion() as sesion:
+            existentes = {
+                (m.tipo_id, m.fecha): m
+                for m in sesion.scalars(
+                    select(CotizacionDolarModel).where(
+                        tuple_(
+                            CotizacionDolarModel.tipo_id,
+                            CotizacionDolarModel.fecha,
+                        ).in_(claves)
+                    )
+                )
+            }
+            for cotizacion in cotizaciones:
+                clave = (cotizacion.tipo_id, cotizacion.fecha)
+                modelo = existentes.get(clave)
+                if modelo is None:
+                    modelo = CotizacionDolarModel(
+                        tipo_id=cotizacion.tipo_id, fecha=cotizacion.fecha
+                    )
+                    sesion.add(modelo)
+                    existentes[clave] = modelo
+                modelo.compra = cotizacion.compra
+                modelo.venta = cotizacion.venta
+                modelo.estado = ACTIVO
+        return cotizaciones
 
 
 @dataclass
