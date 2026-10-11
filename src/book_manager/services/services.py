@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import datetime
+import os
 from dataclasses import dataclass
 from typing import Callable, Dict, Generic, List, Optional, Tuple, TypeVar
 
 import requests
+from dotenv import load_dotenv
 
+from book_manager.database.connection import ARCHIVO_ENV
 from book_manager.entities.entities import (
     CotizacionDolar,
     Editorial,
@@ -31,7 +34,8 @@ from book_manager.repositories.repositories import (
 
 T = TypeVar("T", bound=EntidadBase)
 
-URL_DOLAR_API = "https://dolarapi.com/v1/dolares"
+# Variable del archivo .env con la URL de DolarApi.
+VARIABLE_API_URL = "API_URL"
 
 # Minutos durante los que una consulta a DolarApi se considera vigente.
 MINUTOS_VIGENCIA_COTIZACION = 5
@@ -653,7 +657,7 @@ class ServicioStock:
         return [s for s in self.listar() if s.bajo_minimo]
 
 
-class ServicioCotizacion:
+class ServicioCotizacionDolar:
     """Lógica de cotizaciones del dólar y conversión a pesos."""
 
     def __init__(
@@ -672,11 +676,18 @@ class ServicioCotizacion:
         self.__repositorio: IRepositorioCotizacionDolar = repositorio
         self.__servicio_tipo: ServicioTipoCotizacion = servicio_tipo
         self.__ultima_consulta: Optional[datetime.datetime] = None
+        load_dotenv(ARCHIVO_ENV)
+        self.__api_url: Optional[str] = os.getenv(VARIABLE_API_URL)
 
     @property
     def ultima_consulta(self) -> Optional[datetime.datetime]:
         """Momento de la última consulta exitosa a DolarApi."""
         return self.__ultima_consulta
+
+    @property
+    def api_url(self) -> Optional[str]:
+        """URL de DolarApi leída del archivo .env (API_URL)."""
+        return self.__api_url
 
     @property
     def en_tiempo_real(self) -> bool:
@@ -701,7 +712,7 @@ class ServicioCotizacion:
         if self.en_tiempo_real:
             return True
         try:
-            self.actualizar_desde_api(timeout=5)
+            self.obtener_cotizaciones(timeout=5)
         except RuntimeError:
             return False
         return True
@@ -813,13 +824,14 @@ class ServicioCotizacion:
         self.obtener(tipo_id, fecha)
         self.__repositorio.eliminar(tipo_id, fecha)
 
-    def actualizar_desde_api(
+    def obtener_cotizaciones(
         self, timeout: float = 10
     ) -> List[CotizacionDolar]:
-        """Descarga las cotizaciones del día desde DolarApi.
+        """Busca, descarga y registra en la base las cotizaciones del día.
 
-        Solo se registran los tipos que existen en el sistema. Si ya hay
-        una cotización para ese tipo en la fecha, se actualiza.
+        La URL se toma de la variable API_URL del archivo .env. Solo se
+        registran los tipos que existen en el sistema; si ya hay una
+        cotización de ese tipo en la fecha, se actualizan sus valores.
 
         Args:
             timeout (float): Segundos máximos de espera de la API.
@@ -828,10 +840,15 @@ class ServicioCotizacion:
             List[CotizacionDolar]: Cotizaciones creadas o actualizadas.
 
         Raises:
-            RuntimeError: Si no se pudo consultar la API.
+            RuntimeError: Si falta API_URL en el .env o no se pudo
+                consultar la API.
         """
+        if not self.__api_url:
+            raise RuntimeError(
+                f"Falta la variable {VARIABLE_API_URL} en el archivo .env."
+            )
         try:
-            respuesta = requests.get(URL_DOLAR_API, timeout=timeout)
+            respuesta = requests.get(self.__api_url, timeout=timeout)
             respuesta.raise_for_status()
             datos = respuesta.json()
         except (requests.RequestException, ValueError) as error:
@@ -930,7 +947,7 @@ class ServicioReportes:
         servicio_libro: ServicioLibro,
         servicio_precio: ServicioPrecio,
         servicio_stock: ServicioStock,
-        servicio_cotizacion: ServicioCotizacion,
+        servicio_cotizacion: ServicioCotizacionDolar,
         servicio_tipo: ServicioTipoCotizacion,
     ) -> None:
         """Constructor.
@@ -939,7 +956,7 @@ class ServicioReportes:
             servicio_libro (ServicioLibro): Servicio de libros.
             servicio_precio (ServicioPrecio): Servicio de precios.
             servicio_stock (ServicioStock): Servicio de stock.
-            servicio_cotizacion (ServicioCotizacion): Servicio de
+            servicio_cotizacion (ServicioCotizacionDolar): Servicio de
                 cotizaciones.
             servicio_tipo (ServicioTipoCotizacion): Servicio de tipos de
                 cotización.
@@ -947,7 +964,7 @@ class ServicioReportes:
         self.__libros: ServicioLibro = servicio_libro
         self.__precios: ServicioPrecio = servicio_precio
         self.__stock: ServicioStock = servicio_stock
-        self.__cotizaciones: ServicioCotizacion = servicio_cotizacion
+        self.__cotizaciones: ServicioCotizacionDolar = servicio_cotizacion
         self.__tipos: ServicioTipoCotizacion = servicio_tipo
 
     def precio_en_pesos(self, libro_id: int, tipo_id: int) -> Optional[float]:
@@ -1040,7 +1057,7 @@ class Servicios:
     libros: ServicioLibro
     precios: ServicioPrecio
     stock: ServicioStock
-    cotizaciones: ServicioCotizacion
+    cotizaciones: ServicioCotizacionDolar
     reportes: ServicioReportes
 
 
@@ -1057,7 +1074,7 @@ def crear_servicios(repos: Repositorios) -> Servicios:
     libros = ServicioLibro(repos.libros, repos.precios, repos.stock)
     precios = ServicioPrecio(repos.precios)
     stock = ServicioStock(repos.stock)
-    cotizaciones = ServicioCotizacion(repos.cotizaciones, tipos)
+    cotizaciones = ServicioCotizacionDolar(repos.cotizaciones, tipos)
     return Servicios(
         generos=ServicioGenero(repos.generos, repos.libros),
         editoriales=ServicioEditorial(repos.editoriales, repos.libros),

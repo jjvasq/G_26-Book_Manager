@@ -778,7 +778,7 @@ class Consola:
         def desde_api() -> None:
             print("Conectando con dolarapi.com ...")
             try:
-                self._mostrar(servicio.actualizar_desde_api())
+                self._mostrar(servicio.obtener_cotizaciones())
                 return
             except RuntimeError:
                 print(
