@@ -2,6 +2,14 @@
 
 # Sprint 2
 
+## [Ejercicio 07]
+- Se agrega `API_URL` al archivo `.env`.
+- Al servicio de cotizaciones le cambiamos el nombre a
+`ServicioCotizacionDolar`.
+- Cambia el nombre de  `actualizar_desde_api()` a `obtener_cotizaciones()`,
+que busca y descarga las cotizaciones de DolarApi y las registra en
+la base de datos.
+
 ## [Ejercicio 06]
 - Se reemplazan los repositorios CSV por repositorios sobre la base de datos
 (`RepositorioSQL` genérico y uno por entidad), manteniendo las interfaces
