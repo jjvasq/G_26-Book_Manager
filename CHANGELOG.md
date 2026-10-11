@@ -2,6 +2,20 @@
 
 # Sprint 2
 
+## [Ejercicio 08]
+- Se agrega en el menú *Valor del dólar* la opción "Obtener las cotizaciones
+por API", que usa en `obtener_cotizaciones()`.
+- Se agrega en el menú *Lista de precios* la opción "Lista de precios
+bimonetaria": muestra cada libro en pesos y en la moneda elegida, según el
+tipo de moneda seleccionada.
+- Se agrega en el menú *Lista de precios* la opción "Exportar precios a CSV",
+que genera un archivo con el precio de cada libro en todas las monedas.
+- Se agregan en `ServicioReportes` los métodos `precio_en_moneda`,
+`lista_bimonetaria` y `exportar_precios_csv`.
+- Se actualiza el README con la configuración del `.env`.
+- Se agregan excepciones.
+- Se modifica el formato de la interfaz de la consola.
+
 ## [Ejercicio 07]
 - Se agrega `API_URL` al archivo `.env`.
 - Al servicio de cotizaciones le cambiamos el nombre a

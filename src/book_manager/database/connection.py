@@ -12,6 +12,8 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.orm import Session, sessionmaker
 
+from book_manager.exceptions.exceptions import ConfiguracionError
+
 # Carpeta raíz del proyecto, donde se encuentra el archivo .env.
 RAIZ_PROYECTO = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "..")
@@ -28,6 +30,9 @@ MARCADOR_PASSWORD = "[YOUR-PASSWORD]"
 PREFIJO_URL = "postgresql://"
 PREFIJO_DRIVER = "postgresql+psycopg2://"
 
+# Segundos máximos de espera al abrir una conexión con la base.
+SEGUNDOS_TIMEOUT_CONEXION = 10
+
 
 def url_desde_entorno() -> str:
     """Arma la URL de conexión a Supabase con las variables de entorno.
@@ -42,13 +47,13 @@ def url_desde_entorno() -> str:
         str: URL de conexión completa.
 
     Raises:
-        RuntimeError: Si falta DATABASE_URL o SUPABASE_DB_PASSWORD.
+        ConfiguracionError: Si falta DATABASE_URL o SUPABASE_DB_PASSWORD.
     """
     load_dotenv(ARCHIVO_ENV)
     url = os.getenv("DATABASE_URL")
     password = os.getenv("SUPABASE_DB_PASSWORD")
     if not url:
-        raise RuntimeError(
+        raise ConfiguracionError(
             "Falta la variable DATABASE_URL en el archivo .env."
         )
     if url.startswith(PREFIJO_URL):
@@ -56,7 +61,7 @@ def url_desde_entorno() -> str:
     if MARCADOR_PASSWORD not in url:
         return url
     if not password:
-        raise RuntimeError(
+        raise ConfiguracionError(
             "Falta la variable de entorno SUPABASE_DB_PASSWORD."
         )
     # quote_plus evita errores si la contraseña tiene @, #, / u otros
@@ -141,8 +146,14 @@ class ConexionDB:
                 que ejecuta.
         """
         self.__url: URL = make_url(url or url_desde_entorno())
+        # Con PostgreSQL se limita la espera al conectar, para que un
+        # problema de red dé error en lugar de dejar el programa colgado.
+        opciones = (
+            {"connect_timeout": SEGUNDOS_TIMEOUT_CONEXION}
+            if self.__url.get_backend_name() == "postgresql" else {}
+        )
         self.__engine: Engine = create_engine(
-            self.__url, echo=echo, pool_pre_ping=True
+            self.__url, echo=echo, pool_pre_ping=True, connect_args=opciones
         )
         self.__fabrica_sesiones: sessionmaker[Session] = sessionmaker(
             bind=self.__engine, expire_on_commit=False

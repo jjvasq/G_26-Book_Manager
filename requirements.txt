@@ -10,3 +10,5 @@ SQLAlchemy>=2.0
 python-dotenv>=1.0
 # Driver de PostgreSQL (Supabase).
 psycopg2-binary>=2.9
+# Formato de la interfaz de consola
+rich>=13

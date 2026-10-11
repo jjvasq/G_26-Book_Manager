@@ -1,2 +1,5 @@
 *.pyc
 /.venv
+src/book_manager/entities/entities.py.bak
+/src/book_manager/exports
+*.bak
