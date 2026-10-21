@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import Dict, Generic, List, Optional, Type, TypeVar
 
 from sqlalchemy import Select, select, tuple_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from book_manager.database.connection import ConexionDB
@@ -104,7 +105,8 @@ class IRepositorio(abc.ABC, Generic[T]):
             T: La entidad actualizada.
 
         Raises:
-            RegistroNoEncontradoError: Si no se encuentra la entidad para actualizar.
+            RegistroNoEncontradoError: Si no se encuentra la entidad para
+                actualizar.
         """
         pass
 
@@ -135,7 +137,8 @@ class IRepositorioStock(abc.ABC):
             Stock: El objeto Stock creado.
 
         Raises:
-            RegistroDuplicadoError: Si ya existe un registro de stock para el mismo libro.
+            RegistroDuplicadoError: Si ya existe un registro de stock para el
+                mismo libro.
         """
         pass
 
@@ -164,7 +167,8 @@ class IRepositorioStock(abc.ABC):
             Stock: El objeto Stock actualizado.
 
         Raises:
-            RegistroNoEncontradoError: Si no se encuentra el stock para actualizar.
+            RegistroNoEncontradoError: Si no se encuentra el stock para
+                actualizar.
         """
         pass
 
@@ -195,7 +199,8 @@ class IRepositorioCotizacionDolar(abc.ABC):
             CotizacionDolar: El objeto CotizacionDolar creado.
 
         Raises:
-            RegistroDuplicadoError: Si ya existe una cotización para el mismo tipo y fecha.
+            RegistroDuplicadoError: Si ya existe una cotización para el mismo
+                tipo y fecha.
         """
         pass
 
@@ -546,9 +551,11 @@ class RepositorioSQL(IRepositorio[T]):
             T: La entidad creada, con su ID.
 
         Raises:
-            RegistroDuplicadoError: Si ya existe un registro con el mismo ID (aunque
-                esté borrado).
+            RegistroDuplicadoError: Si ya existe un registro con el mismo ID
+                (aunque esté borrado) o si la base rechaza el alta por un
+                valor único repetido.
         """
+        try:
         with self._conexion.transaccion() as sesion:
             if entidad.id and sesion.get(self.MODELO, entidad.id):
                 raise RegistroDuplicadoError(
@@ -561,6 +568,11 @@ class RepositorioSQL(IRepositorio[T]):
             sesion.add(modelo)
             sesion.flush()
             entidad.id = modelo.id
+        except IntegrityError as error:
+            raise RegistroDuplicadoError(
+                "La base de datos rechazó el alta: ya existe un registro "
+                "activo con esos datos."
+            ) from error
         return entidad
 
     def leer_por_id(self, id: int) -> Optional[T]:
@@ -599,8 +611,12 @@ class RepositorioSQL(IRepositorio[T]):
             T: La entidad actualizada.
 
         Raises:
-            RegistroNoEncontradoError: Si no existe un registro activo con ese ID.
+            RegistroNoEncontradoError: Si no existe un registro activo con ese
+                ID.
+            RegistroDuplicadoError: Si la base rechaza la modificación por
+                un valor único repetido.
         """
+        try:
         with self._conexion.transaccion() as sesion:
             modelo = self._modelo_activo(sesion, entidad.id)
             if modelo is None:
@@ -608,6 +624,11 @@ class RepositorioSQL(IRepositorio[T]):
                     f"No existe una entidad con ID {entidad.id}."
                 )
             self._copiar(entidad, modelo)
+        except IntegrityError as error:
+            raise RegistroDuplicadoError(
+                "La base de datos rechazó la modificación: ya existe un "
+                "registro activo con esos datos."
+            ) from error
         return entidad
 
     def eliminar(self, id: int) -> bool:
@@ -915,7 +936,9 @@ class RepositorioStock(IRepositorioStock):
         with self.__conexion.transaccion() as sesion:
             modelo = sesion.get(StockModel, stock.libro_id)
             if modelo is not None and modelo.estado == ACTIVO:
-                raise RegistroDuplicadoError("El libro ya tiene stock registrado.")
+                raise RegistroDuplicadoError(
+                    "El libro ya tiene stock registrado."
+                )
             if modelo is None:
                 modelo = StockModel(libro_id=stock.libro_id)
                 sesion.add(modelo)
@@ -967,7 +990,9 @@ class RepositorioStock(IRepositorioStock):
         with self.__conexion.transaccion() as sesion:
             modelo = self._activo(sesion, stock.libro_id)
             if modelo is None:
-                raise RegistroNoEncontradoError("El libro no tiene stock registrado.")
+                raise RegistroNoEncontradoError(
+                    "El libro no tiene stock registrado."
+                )
             modelo.cantidad = stock.cantidad
             modelo.stock_minimo = stock.stock_minimo
         return stock
@@ -1056,8 +1081,8 @@ class RepositorioCotizacionDolar(IRepositorioCotizacionDolar):
             CotizacionDolar: La entidad creada.
 
         Raises:
-            RegistroDuplicadoError: Si ya existe una cotización activa para ese tipo y
-                fecha.
+            RegistroDuplicadoError: Si ya existe una cotización activa para
+                ese tipo y fecha.
         """
         clave = (cotizacion.tipo_id, cotizacion.fecha)
         with self.__conexion.transaccion() as sesion:

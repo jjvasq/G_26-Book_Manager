@@ -38,10 +38,11 @@ def url_desde_entorno() -> str:
     """Arma la URL de conexión a Supabase con las variables de entorno.
 
     La URL (DATABASE_URL) se copia de Supabase > Connect > ORM >
-    DIRECT_URL y se guarda en el archivo .env tal como la da Supabase,
-    con el marcador [YOUR-PASSWORD]. La contraseña no se guarda en el
-    repositorio: se lee de la variable SUPABASE_DB_PASSWORD (en Colab,
-    desde los secrets) y reemplaza al marcador.
+    DIRECT_URL y se guarda en el archivo .env (que no se versiona; en el
+    repositorio solo está la plantilla .env.example) tal como la da
+    Supabase, con el marcador [YOUR-PASSWORD]. La contraseña no se guarda
+    en ningún archivo: se lee de la variable SUPABASE_DB_PASSWORD (en
+    Colab, desde los secrets) y reemplaza al marcador.
 
     Returns:
         str: URL de conexión completa.
@@ -54,7 +55,8 @@ def url_desde_entorno() -> str:
     password = os.getenv("SUPABASE_DB_PASSWORD")
     if not url:
         raise ConfiguracionError(
-            "Falta la variable DATABASE_URL en el archivo .env."
+            "Falta la variable DATABASE_URL. Copie .env.example como .env "
+            "y complete la URL de conexión."
         )
     if url.startswith(PREFIJO_URL):
         url = PREFIJO_DRIVER + url[len(PREFIJO_URL):]

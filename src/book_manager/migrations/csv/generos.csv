@@ -1,0 +1,11 @@
+id,nombre,descripcion,estado
+1,Novela,Narrativa de ficción extensa,1
+2,Cuento,Relatos breves de ficción,1
+3,Ensayo,Textos de reflexión y análisis,1
+4,Poesía,Obras de Poesía,1
+5,Infantil,Libros Infantiles,1
+6,Juvenil,Literatura para adolescentes,1
+7,Técnico,"Informática, Ciencia e Ingeniería",1
+8,Historia,Historia Argentina y Universal,1
+9,Policial,Novela de investigación policial y de misterio,1
+10,Ciencia ficción,Futuros posibles,1

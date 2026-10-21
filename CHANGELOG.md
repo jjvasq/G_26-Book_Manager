@@ -1,5 +1,25 @@
 # Changelog
 
+# Sprint 2 - Correcciones de la devolución
+
+- `obtener_cotizaciones` ya no descarta las casas de DolarApi cuyo tipo no
+está registrado: da de alta el tipo de cotización y registra su cotización.
+- La fecha de la cotización se convierte de UTC a la hora de Argentina (antes
+una consulta nocturna podía quedar con la fecha del día siguiente).
+- La migración ya no borra ni recrea las tablas: crea solo las que faltan.
+- Cada sentencia generada es `INSERT ... ON CONFLICT DO NOTHING`: la
+migración se puede repetir sin duplicar registros ni perder los datos
+cargados después (altas, modificaciones y borrados lógicos).
+- Se versionan los CSV del Sprint 1 en `migrations/csv`.
+- Se regeneran los archivos `.sql` de `migrations/sql`.
+- `main` ya no muestra la cadena de conexión al informar la migración.
+- Se quitan los índices simples de `isbn` y `codigo`, que quedan cubiertos
+por los índices únicos.
+- Se deja de versionar el archivo `.env` (se agrega a `.gitignore`).
+- Se versiona la plantilla `.env.example` sin datos de conexión reales.
+- Se actualiza el README con los pasos para crear el `.env` a partir de la
+plantilla.
+
 # Sprint 2
 
 ## [Ejercicio 08]

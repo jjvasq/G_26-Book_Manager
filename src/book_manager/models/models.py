@@ -5,7 +5,10 @@ Cada clase representa una tabla. Las entidades del dominio (paquete
 modelos y entidades.
 
 Todas las tablas tienen la columna `estado` para el borrado lógico
-(1 = activo, 0 = borrado).
+(1 = activo, 0 = borrado). Por eso las reglas de unicidad del dominio
+(ISBN, código de moneda, nombres, un precio por libro y moneda) se
+implementan con índices únicos parciales que solo alcanzan a los registros
+activos: un registro borrado no impide volver a dar de alta el mismo valor.
 """
 
 from __future__ import annotations
@@ -14,11 +17,24 @@ import datetime
 from typing import List, Optional
 
 from sqlalchemy import (
-    CheckConstraint, Date, Float, ForeignKey, Integer, String,
+    CheckConstraint,
+    ColumnElement,
+    Date,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.schema import CreateIndex
 
 from book_manager.database.connection import ConexionDB
+
+
+# Valor de la columna `estado` de los registros activos.
+ESTADO_ACTIVO = 1
 
 
 class Base(DeclarativeBase):
@@ -28,7 +44,9 @@ class Base(DeclarativeBase):
 class ModeloConEstado:
     """Agrega la columna `estado` usada para el borrado lógico."""
 
-    estado: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    estado: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=ESTADO_ACTIVO
+    )
 
 
 class GeneroModel(ModeloConEstado, Base):
@@ -69,7 +87,7 @@ class MonedaModel(ModeloConEstado, Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    codigo: Mapped[str] = mapped_column(String(3), nullable=False, index=True)
+    codigo: Mapped[str] = mapped_column(String(3), nullable=False)
     nombre: Mapped[str] = mapped_column(String(100), nullable=False)
     simbolo: Mapped[str] = mapped_column(String(10), nullable=False)
     equivalencia_usd: Mapped[float] = mapped_column(Float, nullable=False)
@@ -100,7 +118,7 @@ class LibroModel(ModeloConEstado, Base):
     __table_args__ = (CheckConstraint("anio > 0", name="ck_libro_anio"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    isbn: Mapped[str] = mapped_column(String(13), nullable=False, index=True)
+    isbn: Mapped[str] = mapped_column(String(13), nullable=False)
     titulo: Mapped[str] = mapped_column(String(200), nullable=False)
     autor: Mapped[str] = mapped_column(String(150), nullable=False)
     anio: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -189,13 +207,78 @@ class CotizacionDolarModel(ModeloConEstado, Base):
     )
 
 
+def _indice_unico_activos(
+    nombre: str, estado: Mapped[int], *expresiones: ColumnElement
+) -> Index:
+    """Crea un índice único parcial sobre los registros activos.
+
+    Args:
+        nombre (str): Nombre del índice en la base de datos.
+        estado (Mapped[int]): Columna `estado` de la tabla.
+        *expresiones (ColumnElement): Columnas o expresiones que no pueden
+            repetirse entre los registros activos.
+
+    Returns:
+        Index: Índice asociado a la tabla de las columnas.
+    """
+    condicion = estado == ESTADO_ACTIVO
+    return Index(
+        nombre,
+        *expresiones,
+        unique=True,
+        postgresql_where=condicion,
+        sqlite_where=condicion,
+    )
+
+
+# Unicidad del dominio. Los nombres se comparan sin distinguir mayúsculas,
+# igual que en las validaciones de los servicios.
+INDICES_UNICOS: List[Index] = [
+    _indice_unico_activos(
+        "uq_libros_isbn_activo", LibroModel.estado, LibroModel.isbn
+    ),
+    _indice_unico_activos(
+        "uq_monedas_codigo_activo", MonedaModel.estado, MonedaModel.codigo
+    ),
+    _indice_unico_activos(
+        "uq_generos_nombre_activo",
+        GeneroModel.estado,
+        func.lower(GeneroModel.nombre),
+    ),
+    _indice_unico_activos(
+        "uq_editoriales_nombre_activo",
+        EditorialModel.estado,
+        func.lower(EditorialModel.nombre),
+    ),
+    _indice_unico_activos(
+        "uq_tipos_cotizacion_nombre_activo",
+        TipoCotizacionModel.estado,
+        func.lower(TipoCotizacionModel.nombre),
+    ),
+    _indice_unico_activos(
+        "uq_precios_libro_moneda_activo",
+        PrecioModel.estado,
+        PrecioModel.libro_id,
+        PrecioModel.moneda_id,
+    ),
+]
+
+
 def crear_tablas(conexion: ConexionDB) -> None:
-    """Crea en la base de datos las tablas que todavía no existen.
+    """Crea las tablas y los índices únicos que todavía no existen.
+
+    `create_all` no modifica tablas que ya existen, por eso los índices
+    únicos se crean también por separado (CREATE UNIQUE INDEX IF NOT
+    EXISTS): así una base creada antes de agregarlos los incorpora sin
+    perder datos.
 
     Args:
         conexion (ConexionDB): Conexión a la base de datos.
     """
     Base.metadata.create_all(conexion.engine)
+    with conexion.engine.begin() as conexion_db:
+        for indice in INDICES_UNICOS:
+            conexion_db.execute(CreateIndex(indice, if_not_exists=True))
 
 
 def eliminar_tablas(conexion: ConexionDB) -> None:
