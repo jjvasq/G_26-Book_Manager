@@ -18,16 +18,17 @@ def main(import_default_data: bool = False) -> None:
     """Inicia el sistema.
 
     Args:
-        import_default_data (bool): Si es True, vuelve a migrar a la base
-            de datos los datos del Sprint 1 (archivos CSV). Si la base no
-            tiene datos cargados, la migración se hace igual.
+        import_default_data (bool): Si es True, vuelve a ejecutar la
+            migración de los datos del Sprint 1 (archivos CSV); solo se
+            insertan los registros que faltan, sin borrar datos. Si la base
+            no tiene datos cargados, la migración se hace igual.
     """
     conexion = ConexionDB()
     if import_default_data or base_vacia(conexion):
         resumen = migrar_datos(CARPETA_CSV, CARPETA_SQL, conexion)
         print(
-            f"Datos del Sprint 1 migrados a {conexion.url} "
-            f"({sum(resumen.values())} registros)."
+            "Migración de datos del Sprint 1: "
+            f"{sum(resumen.values())} registros insertados."
         )
     servicios = crear_servicios(crear_repositorios(conexion))
     Consola(servicios).ejecutar()

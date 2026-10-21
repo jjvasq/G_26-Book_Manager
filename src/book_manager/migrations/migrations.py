@@ -6,7 +6,8 @@ import datetime
 import os
 from typing import Dict, List, Optional, Tuple, Type
 
-from sqlalchemy import Table, func, insert, select
+from sqlalchemy import Insert, Table, func, select
+from sqlalchemy.dialects import postgresql, sqlite
 
 from book_manager.database.connection import ConexionDB
 from book_manager.entities.entities import texto_a_fecha
@@ -21,13 +22,19 @@ from book_manager.models.models import (
     StockModel,
     TipoCotizacionModel,
     crear_tablas,
-    eliminar_tablas,
 )
 from book_manager.repositories.repositories import ArchivoCSV
 
 CARPETA_MIGRACIONES = os.path.dirname(os.path.abspath(__file__))
 CARPETA_CSV = os.path.join(CARPETA_MIGRACIONES, "csv")
 CARPETA_SQL = os.path.join(CARPETA_MIGRACIONES, "sql")
+
+# Función `insert` de cada dialecto soportado; ambas permiten
+# `ON CONFLICT DO NOTHING`, que hace que la migración sea repetible.
+INSERT_POR_DIALECTO = {
+    "postgresql": postgresql.insert,
+    "sqlite": sqlite.insert,
+}
 
 # Archivo CSV de origen y modelo destino, en el orden en que deben
 # insertarse para respetar las claves foráneas.
@@ -77,10 +84,18 @@ def _leer_filas(carpeta_csvs: str, archivo: str, tabla: Table) -> List[Dict]:
 
     Returns:
         List[Dict]: Filas con los valores ya convertidos.
+
+    Raises:
+        FileNotFoundError: Si el archivo CSV no existe.
     """
     columnas = [columna.name for columna in tabla.columns]
+    origen = ArchivoCSV(archivo, columnas, carpeta_csvs)
+    if not os.path.isfile(origen.ruta):
+        raise FileNotFoundError(
+            f"No se encontró el archivo de migración {origen.ruta}."
+        )
     filas = []
-    for fila in ArchivoCSV(archivo, columnas, carpeta_csvs).leer():
+    for fila in origen.leer():
         fila.setdefault("estado", "1")
         filas.append({
             columna: _convertir_valor(tabla, columna, fila[columna])
@@ -88,6 +103,33 @@ def _leer_filas(carpeta_csvs: str, archivo: str, tabla: Table) -> List[Dict]:
             if columna in fila
         })
     return filas
+
+
+def _insert_sin_conflicto(
+    conexion: ConexionDB, tabla: Table, fila: Dict
+) -> Insert:
+    """Arma un INSERT que no hace nada si el registro ya existe.
+
+    Con `ON CONFLICT DO NOTHING` se omiten las filas cuya clave (o algún
+    valor único) ya está en la base, sin pisar ni borrar los datos
+    cargados después de una migración anterior.
+
+    Args:
+        conexion (ConexionDB): Conexión, para usar el dialecto de la base.
+        tabla (Table): Tabla destino.
+        fila (Dict): Valores a insertar.
+
+    Returns:
+        Insert: Sentencia INSERT ... ON CONFLICT DO NOTHING.
+
+    Raises:
+        ValueError: Si el motor de base de datos no está soportado.
+    """
+    dialecto = conexion.engine.dialect.name
+    if dialecto not in INSERT_POR_DIALECTO:
+        raise ValueError(f"Motor de base de datos no soportado: {dialecto}.")
+    sentencia = INSERT_POR_DIALECTO[dialecto](tabla).values(**fila)
+    return sentencia.on_conflict_do_nothing()
 
 
 def _generar_sentencias(
@@ -101,11 +143,11 @@ def _generar_sentencias(
         filas (List[Dict]): Filas a insertar.
 
     Returns:
-        List[str]: Una sentencia INSERT por fila.
+        List[str]: Una sentencia INSERT ... ON CONFLICT DO NOTHING por fila.
     """
     return [
         str(
-            insert(tabla).values(**fila).compile(
+            _insert_sin_conflicto(conexion, tabla, fila).compile(
                 dialect=conexion.engine.dialect,
                 compile_kwargs={"literal_binds": True},
             )
@@ -143,7 +185,7 @@ def _ajustar_secuencias(conexion: ConexionDB) -> None:
 
     Como la migración inserta los ID originales, en PostgreSQL hay que
     mover cada secuencia al mayor ID cargado para que las altas nuevas
-    no repitan valores.
+    no repitan valores. Si la tabla está vacía, el próximo ID es 1.
 
     Args:
         conexion (ConexionDB): Conexión a la base de datos.
@@ -157,7 +199,7 @@ def _ajustar_secuencias(conexion: ConexionDB) -> None:
                 continue
             sesion.connection().exec_driver_sql(
                 f"SELECT setval(pg_get_serial_sequence('{tabla.name}', 'id'),"
-                f" COALESCE(MAX(id), 1)) FROM {tabla.name}"
+                f" COALESCE(MAX(id), 0) + 1, false) FROM {tabla.name}"
             )
 
 
@@ -169,9 +211,12 @@ def migrar_datos(
     """Función encargada de la migración de datos de csv a sql.
 
     Se encarga de leer los archivos csv y crear los archivos sql
-    para la inserción en la base de datos. Las tablas se crean de
-    nuevo y las sentencias de los archivos .sql se ejecutan en una
-    única transacción: si alguna falla, no se guarda nada.
+    para la inserción en la base de datos. La migración no borra datos:
+    crea solo las tablas que faltan y cada sentencia es un
+    INSERT ... ON CONFLICT DO NOTHING, por lo que se puede ejecutar más de
+    una vez sin duplicar registros ni perder los cargados después. Las
+    sentencias se ejecutan en una única transacción: si alguna falla, no
+    se guarda nada.
 
     Args:
         carpeta_csvs (str): Carpeta donde se encuentran los archivos csv de
@@ -182,10 +227,10 @@ def migrar_datos(
             es None se crea una con la configuración del .env.
 
     Returns:
-        Dict[str, int]: Cantidad de registros migrados por tabla.
+        Dict[str, int]: Cantidad de registros insertados por tabla (los
+            que ya existían no se cuentan).
     """
     conexion = conexion or ConexionDB()
-    eliminar_tablas(conexion)
     crear_tablas(conexion)
     resumen: Dict[str, int] = {}
     with conexion.transaccion() as sesion:
@@ -194,9 +239,10 @@ def migrar_datos(
             filas = _leer_filas(carpeta_csvs, archivo, tabla)
             sentencias = _generar_sentencias(conexion, tabla, filas)
             _escribir_sql(carpeta_sqls, numero, tabla, sentencias)
-            for sentencia in sentencias:
-                sesion.connection().exec_driver_sql(sentencia)
-            resumen[tabla.name] = len(sentencias)
+            resumen[tabla.name] = sum(
+                sesion.connection().exec_driver_sql(sentencia).rowcount
+                for sentencia in sentencias
+            )
     _ajustar_secuencias(conexion)
     return resumen
 
@@ -218,4 +264,4 @@ def base_vacia(conexion: ConexionDB) -> bool:
 
 if __name__ == "__main__":
     for nombre, cantidad in migrar_datos(CARPETA_CSV, CARPETA_SQL).items():
-        print(f"{nombre:<20} {cantidad:>4} registros")
+        print(f"{nombre:<20} {cantidad:>4} registros insertados")

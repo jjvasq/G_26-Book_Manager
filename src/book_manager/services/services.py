@@ -6,6 +6,7 @@ import datetime
 import os
 from dataclasses import dataclass
 from typing import Callable, Dict, Generic, List, Optional, Tuple, TypeVar
+from zoneinfo import ZoneInfo
 
 import requests
 from dotenv import load_dotenv
@@ -58,6 +59,15 @@ MINUTOS_VIGENCIA_COTIZACION = 5
 # agente por defecto de requests.
 AGENTE_HTTP = "BookManager/1.0 (+https://dolarapi.com)"
 
+# Zona horaria de las cotizaciones: DolarApi informa la fecha en UTC.
+ZONA_HORARIA_COTIZACIONES = ZoneInfo("America/Argentina/Buenos_Aires")
+
+# Longitud máxima del nombre de un tipo de cotización (tabla
+# tipos_cotizacion).
+LARGO_NOMBRE_TIPO = 50
+
+# Nombre con el que se registra en el sistema cada "casa" de DolarApi. Las
+# casas que no figuran aquí se dan de alta con el nombre que informa la API.
 CASAS_DOLAR_API: Dict[str, str] = {
     "oficial": "Oficial",
     "blue": "Blue",
@@ -103,7 +113,9 @@ class ServicioCRUD(Generic[T]):
         """
         entidad = self.__repositorio.leer_por_id(id)
         if entidad is None:
-            raise RegistroNoEncontradoError(f"No existe un registro con ID {id}.")
+            raise RegistroNoEncontradoError(
+                f"No existe un registro con ID {id}."
+            )
         return entidad
 
     def crear(self, entidad: T) -> T:
@@ -537,7 +549,8 @@ class ServicioPrecio(ServicioCRUD[Precio]):
             id (int): ID del precio (0 si es un alta).
 
         Raises:
-            RegistroDuplicadoError: Si el libro ya tiene un precio en esa moneda.
+            RegistroDuplicadoError: Si el libro ya tiene un precio en esa
+                moneda.
         """
         for otro in self.__repo_precio.leer_por_libro(libro_id):
             if otro.id != id and otro.moneda.id == moneda_id:
@@ -590,7 +603,9 @@ class ServicioStock:
         """
         stock = self.__repositorio.leer_por_libro(libro_id)
         if stock is None:
-            raise RegistroNoEncontradoError(f"El libro {libro_id} no tiene stock registrado.")
+            raise RegistroNoEncontradoError(
+                f"El libro {libro_id} no tiene stock registrado."
+            )
         return stock
 
     def verificar_sin_stock(self, libro_id: int) -> None:
@@ -778,7 +793,9 @@ class ServicioCotizacionDolar:
         """
         cotizacion = self.__repositorio.leer_por_tipo_y_fecha(tipo_id, fecha)
         if cotizacion is None:
-            raise RegistroNoEncontradoError("No existe una cotización para ese tipo y fecha.")
+            raise RegistroNoEncontradoError(
+                "No existe una cotización para ese tipo y fecha."
+            )
         return cotizacion
 
     def ultima(self, tipo_id: int) -> CotizacionDolar:
@@ -795,7 +812,9 @@ class ServicioCotizacionDolar:
         """
         historico = self.historico(tipo_id)
         if not historico:
-            raise RegistroNoEncontradoError("No hay cotizaciones cargadas para ese tipo.")
+            raise RegistroNoEncontradoError(
+                "No hay cotizaciones cargadas para ese tipo."
+            )
         return max(historico, key=lambda c: c.fecha)
 
     def crear(self, cotizacion: CotizacionDolar) -> CotizacionDolar:
@@ -818,11 +837,14 @@ class ServicioCotizacionDolar:
             fecha (datetime.date): Fecha de la cotización.
 
         Raises:
-            ValueError: Si la fecha es futura o ya hay una cotización de
-                ese tipo en esa fecha.
+            DatoInvalidoError: Si la fecha es futura.
+            RegistroDuplicadoError: Si ya hay una cotización de ese tipo en
+                esa fecha.
         """
         if fecha > datetime.date.today():
-            raise DatoInvalidoError("No se pueden cargar cotizaciones futuras.")
+            raise DatoInvalidoError(
+                "No se pueden cargar cotizaciones futuras."
+            )
         if self.__repositorio.leer_por_tipo_y_fecha(tipo_id, fecha):
             raise RegistroDuplicadoError(
                 "Ya existe una cotización de ese tipo en esa fecha."
@@ -854,9 +876,11 @@ class ServicioCotizacionDolar:
     ) -> List[CotizacionDolar]:
         """Busca, descarga y registra en la base las cotizaciones del día.
 
-        La URL se toma de la variable API_URL del archivo .env. Solo se
-        registran los tipos que existen en el sistema; si ya hay una
-        cotización de ese tipo en la fecha, se actualizan sus valores.
+        La URL se toma de la variable API_URL del archivo .env. Cada casa
+        informada por la API se asocia a su tipo de cotización; si el
+        tipo todavía no está registrado en el sistema, se da de alta. Si
+        ya hay una cotización de ese tipo en la fecha, se actualizan sus
+        valores.
 
         Args:
             timeout (float): Segundos máximos de espera de la API.
@@ -865,8 +889,8 @@ class ServicioCotizacionDolar:
             List[CotizacionDolar]: Cotizaciones creadas o actualizadas.
 
         Raises:
-            ConfiguracionError, ApiCotizacionesError: Si falta API_URL en el .env o no se pudo
-                consultar la API.
+            ConfiguracionError: Si falta API_URL en el archivo .env.
+            ApiCotizacionesError: Si no se pudo consultar la API.
         """
         if not self.__api_url:
             raise ConfiguracionError(
@@ -876,7 +900,10 @@ class ServicioCotizacionDolar:
             respuesta = requests.get(
                 self.__api_url,
                 timeout=timeout,
-                headers={"User-Agent": AGENTE_HTTP, "Accept": "application/json"},
+                headers={
+                    "User-Agent": AGENTE_HTTP,
+                    "Accept": "application/json",
+                },
             )
             respuesta.raise_for_status()
             datos = respuesta.json()
@@ -893,20 +920,72 @@ class ServicioCotizacionDolar:
         }
         registradas: List[CotizacionDolar] = []
         for dato in datos:
-            nombre = CASAS_DOLAR_API.get(dato.get("casa", ""))
-            tipo = tipos.get((nombre or "").lower())
+            casa = str(dato.get("casa") or "").strip()
             venta = dato.get("venta")
-            if tipo is None or not venta:
+            if not casa or not venta:
                 continue
+            tipo = self.__tipo_de_casa(casa, dato.get("nombre"), tipos)
             compra = dato.get("compra") or venta
-            fecha = datetime.date.fromisoformat(
-                str(dato.get("fechaActualizacion", ""))[:10]
-                or datetime.date.today().isoformat()
-            )
+            fecha = self._fecha_cotizacion(dato.get("fechaActualizacion"))
             registradas.append(
                 CotizacionDolar(tipo, fecha, float(compra), float(venta))
             )
         return self.__repositorio.guardar_varias(registradas)
+
+    def __tipo_de_casa(
+        self,
+        casa: str,
+        nombre_api: Optional[str],
+        tipos: Dict[str, TipoCotizacion],
+    ) -> TipoCotizacion:
+        """Devuelve el tipo de cotización de una casa de DolarApi.
+
+        Si el tipo no está registrado, se da de alta (con las validaciones
+        del servicio de tipos) y se agrega al diccionario `tipos`.
+
+        Args:
+            casa (str): Identificador de la casa en la API (ej.: "blue").
+            nombre_api (Optional[str]): Nombre informado por la API.
+            tipos (Dict[str, TipoCotizacion]): Tipos registrados, por
+                nombre en minúsculas.
+
+        Returns:
+            TipoCotizacion: El tipo existente o el recién creado.
+        """
+        nombre = (
+            CASAS_DOLAR_API.get(casa.lower())
+            or str(nombre_api or "").strip()
+            or casa.capitalize()
+        )[:LARGO_NOMBRE_TIPO]
+        tipo = tipos.get(nombre.lower())
+        if tipo is None:
+            tipo = self.__servicio_tipo.crear(TipoCotizacion(
+                0, nombre, f"Alta automática desde DolarApi (casa {casa})"
+            ))
+            tipos[nombre.lower()] = tipo
+        return tipo
+
+    @staticmethod
+    def _fecha_cotizacion(texto: Optional[str]) -> datetime.date:
+        """Obtiene la fecha local (Argentina) de una cotización de la API.
+
+        Args:
+            texto (Optional[str]): Fecha y hora ISO 8601 informada por la
+                API (ej.: "2026-10-20T14:58:00.000Z").
+
+        Returns:
+            datetime.date: Fecha en la hora de Argentina; si la API no
+                informa una fecha válida, la fecha de hoy.
+        """
+        try:
+            momento = datetime.datetime.fromisoformat(
+                str(texto or "").replace("Z", "+00:00")
+            )
+        except ValueError:
+            return datetime.datetime.now(ZONA_HORARIA_COTIZACIONES).date()
+        if momento.tzinfo is not None:
+            momento = momento.astimezone(ZONA_HORARIA_COTIZACIONES)
+        return momento.date()
 
     def registrar_manual(
         self, tipo: TipoCotizacion, compra: float, venta: float

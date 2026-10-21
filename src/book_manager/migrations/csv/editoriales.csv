@@ -1,0 +1,11 @@
+id,nombre,pais,email,estado
+1,Planeta,España,contacto@planeta.com.ar,1
+2,Penguin Random House,Estados Unidos,info@prh.example.com.ar,1
+3,Siglo XXI,Argentina,ventas@sigloxxi.example.com.ar,1
+4,Eudeba,Argentina,eudeba@eudeba.example.com.ar,1
+5,Anagrama,España,anagrama@anagrama.example.com.ar,1
+6,Salamandra,España,info@salamandra.example.com.ar,1
+7,Emecé,Argentina,emece@emece.example.com.ar,1
+8,Alfaguara,España,alfaguara@alfaguara.example.com.ar,1
+9,O'Reilly,Estados Unidos,orders@oreilly.example.com.ar,1
+10,Fondo de Cultura Económica,México,fce@fce.example.com.ar,1
