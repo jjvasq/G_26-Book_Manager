@@ -5,6 +5,8 @@ from __future__ import annotations
 import datetime
 from typing import Callable, Iterable, List, Optional, Tuple, TypeVar
 
+from rich.text import Text
+
 from book_manager.entities.entities import (
     CotizacionDolar,
     Editorial,
@@ -21,8 +23,20 @@ from book_manager.exceptions.exceptions import (
     BookManagerError,
     ConfiguracionError,
 )
-from book_manager.services.services import ServicioCRUD, Servicios
+from book_manager.services.services import (
+    ResultadoScraping,
+    ServicioCRUD,
+    Servicios,
+    UmbralDiferencia,
+)
 from book_manager.ui import estilo as ui
+
+try:
+    # En Google Colab los archivos generados se pueden descargar al equipo
+    # del usuario desde el navegador, fuera de Colab no hay descarga.
+    from google.colab.files import download as descargar_archivo
+except ImportError:
+    descargar_archivo = None
 
 Accion = Callable[[], None]
 V = TypeVar("V")
@@ -67,6 +81,9 @@ class Consola:
             ("Depósito (stock)", self._menu_stock),
             ("Valor del dólar", self._menu_cotizaciones),
             ("Informes", self._menu_reportes),
+            ("Ejecutar scraping", self._scraping),
+            ("Generar reporte", self._reporte_excel),
+            ("Ver historial de auditoría", self._historial_auditoria),
         ], salir="Cerrar el programa")
 
     def _menu(
@@ -926,6 +943,127 @@ class Consola:
             ("Libros para reponer (bajo el mínimo)", bajo_minimo),
             ("Precio de un libro según cada dólar", cotizar_libro),
         ])
+
+    @staticmethod
+    def _pedir_umbral() -> UmbralDiferencia:
+        """Pide la diferencia de precio que dispara una alerta.
+
+        Returns:
+            UmbralDiferencia: La diferencia ingresada.
+
+        Raises:
+            OperacionCancelada: Si se deja vacío.
+        """
+        while True:
+            texto = ui.preguntar(
+                "Diferencia de precio para alertar, en % o en pesos "
+                "(ej.: 10% o 5000; Enter para cancelar)"
+            ).strip()
+            if not texto:
+                raise OperacionCancelada()
+            try:
+                return UmbralDiferencia.desde_texto(texto)
+            except ValueError as error:
+                ui.error(f"{error}")
+
+    @staticmethod
+    def _mostrar_scraping(resultado: ResultadoScraping) -> None:
+        """Muestra la comparación de precios de una ejecución.
+
+        Args:
+            resultado (ResultadoScraping): Resultado del scraping.
+        """
+        tabla = ui.nueva_tabla(
+            "Precio interno vs. Cúspide",
+            ("Libro", "left"), ("Interno", "right"), ("Web", "right"),
+            ("Diferencia", "right"), ("Dif. %", "right"),
+            ("Alerta", "left"),
+        )
+        tabla.caption = (
+            f"{len(resultado.precios)} resultados web · alerta desde "
+            f"{resultado.umbral} · {resultado.ejecucion:%Y-%m-%d %H:%M}"
+        )
+        for comparacion in resultado.comparaciones:
+            interno = comparacion.precio_interno
+            web = comparacion.precio_web
+            alerta = comparacion.alerta(resultado.umbral)
+            tabla.add_row(
+                comparacion.libro.titulo,
+                "-" if interno is None else f"$ {interno:,.2f}",
+                "Sin resultado" if web is None else f"$ {web.precio:,.2f}",
+                "-" if comparacion.diferencia is None
+                else f"$ {comparacion.diferencia:,.2f}",
+                "-" if comparacion.diferencia_porcentual is None
+                else f"{comparacion.diferencia_porcentual:+.1f} %",
+                Text(alerta, style="error") if alerta else "",
+            )
+        ui.consola.print(tabla)
+
+    def _scraping(self) -> None:
+        """Ejecuta el scraping de Cúspide y genera el archivo de alertas."""
+        ui.info(
+            "Se buscará en cuspide.com cada libro del catálogo (10 primeros "
+            "resultados por título). Puede demorar unos minutos."
+        )
+        umbral = self._pedir_umbral()
+        ui.info("Tipo de dólar para los precios internos en otra moneda:")
+        tipo = self._elegir_tipo()
+        with ui.esperando("Buscando los libros en cuspide.com ..."):
+            resultado = self.__servicios.competencia.ejecutar_scraping(
+                umbral, tipo.id
+            )
+        if not resultado.precios:
+            ui.aviso(
+                "No se obtuvieron resultados de cuspide.com: revise la "
+                "conexión a internet o vuelva a intentarlo más tarde."
+            )
+        self._mostrar_scraping(resultado)
+        ui.exito(
+            f"Alertas: {len(resultado.alertas)}. Archivo de alertas: "
+            f"{resultado.archivo_alertas}"
+        )
+        self._ofrecer_descarga(resultado.archivo_alertas)
+
+    def _reporte_excel(self) -> None:
+        """Genera el reporte en Excel de la última ejecución del scraping."""
+        ui.info("Tipo de dólar para los precios internos en otra moneda:")
+        tipo = self._elegir_tipo()
+        with ui.esperando("Generando el reporte ..."):
+            ruta = self.__servicios.competencia.generar_reporte_excel(tipo.id)
+        ui.exito(f"Reporte generado: {ruta}")
+        self._ofrecer_descarga(ruta)
+
+    @staticmethod
+    def _ofrecer_descarga(ruta: str) -> None:
+        """Ofrece descargar al equipo del usuario un archivo generado.
+
+        En Google Colab la descarga se hace desde el navegador. Fuera de
+        Colab se informa la carpeta donde quedó el archivo.
+
+        Args:
+            ruta (str): Ruta del archivo generado.
+        """
+        if descargar_archivo is None:
+            ui.info(f"El archivo quedó guardado en: {ruta}")
+            return
+        respuesta = ui.preguntar(
+            "¿Descargar el archivo a su equipo ahora? (s/n)"
+        ).strip().lower()
+        if respuesta in ("s", "si", "sí"):
+            descargar_archivo(ruta)
+            ui.exito("Descarga iniciada en el navegador.")
+        else:
+            ui.info(
+                "Puede descargarlo después con la celda de descarga del "
+                "notebook o desde la carpeta reportes."
+            )
+
+    def _historial_auditoria(self) -> None:
+        """Muestra el historial de auditoría."""
+        self._mostrar(
+            self.__servicios.auditoria.historial(),
+            "No hay registros de auditoría.",
+        )
 
     @staticmethod
     def _modificacion(

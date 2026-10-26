@@ -228,3 +228,18 @@ cargar_datos_sql(CARPETA_SQL)
 
 Los precios exportados desde el menú *Lista de precios* se guardan en
 `src/book_manager/exports`.
+
+#### 6. Precios de la competencia y auditoría (Sprint 3)
+
+En el menú principal:
+
+- **Ejecutar scraping**: pide la diferencia de precio que dispara una alerta
+y el tipo de moneda para los precios internos en otra moneda, busca los libros
+en cuspide.com, muestra la comparación y genera el archivo CSV.
+- **Generar reporte**: genera un archivo excel con la última ejecución del
+scraping.
+- Al terminar el scraping y al generar el reporte, el sistema pregunta si
+  se quiere descargar el archivo: en Google Colab se descarga desde el
+  navegador, fuera de Colab se informa en qué carpeta quedó.
+- **Ver historial de auditoría**: muestra los registros de la tabla
+  `auditoria` (acción, fecha y detalles) del más reciente al más antiguo.

@@ -2,6 +2,20 @@
 
 # Sprint 3
 
+## [Ejercicio 07]
+- Se agregan al menú principal las opciones "Ejecutar scraping", "Generar
+reporte" y "Ver historial de auditoría".
+- *Ejecutar scraping* pide la diferencia de precio para las alertas (en % o
+en pesos) y el tipo de moneda, muestra la comparación de cada libro
+(interno, web, diferencia y alerta) y la ruta del CSV de alertas.
+- Después de generar el CSV de alertas o el reporte Excel, la consola ofrece
+descargarlo: en Google Colab la descarga se hace desde el navegador fuera de
+Colab se informa la carpeta.
+- *Ver historial de auditoría* muestra los registros de la tabla
+`auditoria` (acción, fecha y detalles), del más reciente al más antiguo.
+- Se agregan las columnas de `Auditoria` a las tablas de la consola.
+- Se documentan las nuevas opciones en el README.
+
 ## [Ejercicio 06]
 - Se crea `services/auditoria.py` con el decorador `@auditar`: cada
 ejecución de una operación decorada registra la acción, la fecha y 
