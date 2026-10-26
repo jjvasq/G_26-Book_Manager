@@ -1,5 +1,14 @@
 # Changelog
 
+# Sprint 3
+
+## [Ejercicio 01]
+- Se crea la rama `Sprint_3` a partir de `Sprint_2`.
+- Se agregan las carpetas `scraper` (proyecto Scrapy) y `reportes` (alertas
+CSV y reportes Excel generados, que no se versionan).
+- Se agregan `scrapy` y `openpyxl` a `requirements.txt`.
+- Se actualiza el README con el objetivo y el contexto del Sprint 3.
+
 # Sprint 2 - Correcciones de la devolución
 
 - `obtener_cotizaciones` ya no descarta las casas de DolarApi cuyo tipo no
