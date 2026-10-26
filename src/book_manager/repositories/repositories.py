@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from book_manager.database.connection import ConexionDB
 from book_manager.entities.entities import (
+    Auditoria,
     CotizacionDolar,
     Editorial,
     EntidadBase,
@@ -40,6 +41,7 @@ from book_manager.exceptions.exceptions import (
     RegistroNoEncontradoError,
 )
 from book_manager.models.models import (
+    AuditoriaModel,
     Base,
     CotizacionDolarModel,
     EditorialModel,
@@ -1357,6 +1359,36 @@ class RepositorioPrecioWeb(RepositorioSQL[PrecioWeb]):
             return [self._a_entidad(m) for m in sesion.scalars(consulta)]
 
 
+class RepositorioAuditoria(RepositorioSQL[Auditoria]):
+    """Repositorio de registros de auditoría (tabla auditoria)."""
+
+    MODELO = AuditoriaModel
+
+    def _a_entidad(self, modelo: AuditoriaModel) -> Auditoria:
+        """Convierte el registro en entidad.
+
+        Args:
+            modelo (AuditoriaModel): Registro de la tabla.
+
+        Returns:
+            Auditoria: La entidad obtenida.
+        """
+        return Auditoria(
+            modelo.id, modelo.accion, modelo.fecha, modelo.detalles
+        )
+
+    def _copiar(self, entidad: Auditoria, modelo: AuditoriaModel) -> None:
+        """Copia los datos de la entidad en el registro.
+
+        Args:
+            entidad (Auditoria): Entidad con los datos.
+            modelo (AuditoriaModel): Registro que se modifica.
+        """
+        modelo.accion = entidad.accion
+        modelo.fecha = entidad.fecha
+        modelo.detalles = entidad.detalles
+
+
 @dataclass
 class Repositorios:
     """Agrupa todos los repositorios del sistema."""
@@ -1370,6 +1402,7 @@ class Repositorios:
     stock: RepositorioStock
     cotizaciones: RepositorioCotizacionDolar
     precios_web: RepositorioPrecioWeb
+    auditoria: RepositorioAuditoria
 
 
 def crear_repositorios(conexion: Optional[ConexionDB] = None) -> Repositorios:
@@ -1393,4 +1426,5 @@ def crear_repositorios(conexion: Optional[ConexionDB] = None) -> Repositorios:
         stock=RepositorioStock(conexion),
         cotizaciones=RepositorioCotizacionDolar(conexion),
         precios_web=RepositorioPrecioWeb(conexion),
+        auditoria=RepositorioAuditoria(conexion),
     )

@@ -951,3 +951,65 @@ class PrecioWeb(EntidadBase):
             f"$ {self.precio:,.2f} ({self.fecha_extraccion:%Y-%m-%d %H:%M})"
             f" -> libro {self.libro.id}"
         )
+
+
+class Auditoria(EntidadBase):
+    """Registro de auditoría de una operación del sistema."""
+
+    def __init__(
+        self,
+        id: int,
+        accion: str,
+        fecha: datetime.datetime,
+        detalles: str = "",
+    ) -> None:
+        """Constructor.
+
+        Args:
+            id (int): ID de la entidad (0 si todavía no fue almacenada).
+            accion (str): Operación realizada (ej.: "Libro.crear").
+            fecha (datetime.datetime): Momento de la operación.
+            detalles (str): Parámetros y resultado (o error) de la
+                operación.
+        """
+        super().__init__(id)
+        self.accion: str = accion
+        self.fecha: datetime.datetime = fecha
+        self.detalles: str = detalles
+
+    @property
+    def accion(self) -> str:
+        """Operación realizada."""
+        return self.__accion
+
+    @accion.setter
+    def accion(self, valor: str) -> None:
+        self.__accion: str = _validar_texto(valor, "acción")
+
+    @property
+    def fecha(self) -> datetime.datetime:
+        """Momento de la operación."""
+        return self.__fecha
+
+    @fecha.setter
+    def fecha(self, valor: datetime.datetime) -> None:
+        self.__fecha: datetime.datetime = _validar_momento(valor, "fecha")
+
+    @property
+    def detalles(self) -> str:
+        """Parámetros y resultado (o error) de la operación."""
+        return self.__detalles
+
+    @detalles.setter
+    def detalles(self, valor: str) -> None:
+        if not isinstance(valor, str):
+            raise DatoInvalidoError("Los detalles deben ser un texto.")
+        self.__detalles: str = valor
+
+    def __str__(self) -> str:
+        """Representacion clara del objeto.
+
+        Returns:
+            str: Representacion clara del objeto.
+        """
+        return f"[{self.id}] {self.fecha:%Y-%m-%d %H:%M:%S} {self.accion}"
