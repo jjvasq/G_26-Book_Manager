@@ -26,6 +26,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 from book_manager.database.connection import ARCHIVO_ENV
 from book_manager.entities.entities import (
+    Auditoria,
     CotizacionDolar,
     Editorial,
     EntidadBase,
@@ -49,6 +50,7 @@ from book_manager.exceptions.exceptions import (
 )
 from book_manager.repositories.repositories import (
     ArchivoCSV,
+    RepositorioAuditoria,
     IRepositorio,
     IRepositorioCotizacionDolar,
     IRepositorioStock,
@@ -58,6 +60,7 @@ from book_manager.repositories.repositories import (
     RepositorioStock,
     Repositorios,
 )
+from book_manager.services.auditoria import auditar, configurar_auditoria
 
 T = TypeVar("T", bound=EntidadBase)
 
@@ -133,6 +136,7 @@ class ServicioCRUD(Generic[T]):
         """
         self.__repositorio: IRepositorio[T] = repositorio
 
+    @auditar()
     def listar(self) -> List[T]:
         """Devuelve todas las entidades.
 
@@ -141,6 +145,7 @@ class ServicioCRUD(Generic[T]):
         """
         return self.__repositorio.leer_todos()
 
+    @auditar()
     def obtener(self, id: int) -> T:
         """Devuelve la entidad con el ID indicado.
 
@@ -160,6 +165,7 @@ class ServicioCRUD(Generic[T]):
             )
         return entidad
 
+    @auditar()
     def crear(self, entidad: T) -> T:
         """Valida y da de alta una entidad.
 
@@ -172,6 +178,7 @@ class ServicioCRUD(Generic[T]):
         self._validar(entidad)
         return self.__repositorio.crear(entidad)
 
+    @auditar()
     def actualizar(self, entidad: T) -> T:
         """Valida y actualiza una entidad existente.
 
@@ -185,6 +192,7 @@ class ServicioCRUD(Generic[T]):
         self._validar(entidad)
         return self.__repositorio.actualizar(entidad)
 
+    @auditar()
     def eliminar(self, id: int) -> None:
         """Elimina una entidad si las reglas de negocio lo permiten.
 
@@ -425,6 +433,7 @@ class ServicioTipoCotizacion(ServicioCRUD[TipoCotizacion]):
         super().__init__(repositorio)
         self.__repo_cotizacion: IRepositorioCotizacionDolar = repo_cotizacion
 
+    @auditar()
     def buscar_por_nombre(self, nombre: str) -> Optional[TipoCotizacion]:
         """Busca un tipo por nombre, sin distinguir mayúsculas.
 
@@ -503,6 +512,7 @@ class ServicioLibro(ServicioCRUD[Libro]):
         self.__repo_precio: RepositorioPrecio = repo_precio
         self.__repo_stock: IRepositorioStock = repo_stock
 
+    @auditar()
     def buscar(self, texto: str) -> List[Libro]:
         """Busca libros por título, autor o ISBN.
 
@@ -569,6 +579,7 @@ class ServicioPrecio(ServicioCRUD[Precio]):
         super().__init__(repositorio)
         self.__repo_precio: RepositorioPrecio = repositorio
 
+    @auditar()
     def listar_por_libro(self, libro_id: int) -> List[Precio]:
         """Devuelve los precios de un libro.
 
@@ -623,6 +634,7 @@ class ServicioStock:
         """
         self.__repositorio: RepositorioStock = repositorio
 
+    @auditar()
     def listar(self) -> List[Stock]:
         """Devuelve todos los registros de stock.
 
@@ -631,6 +643,7 @@ class ServicioStock:
         """
         return self.__repositorio.leer_todos()
 
+    @auditar()
     def obtener(self, libro_id: int) -> Stock:
         """Devuelve el stock de un libro.
 
@@ -664,6 +677,7 @@ class ServicioStock:
                 f"Ya existe stock para el libro {libro_id}; modifíquelo."
             )
 
+    @auditar()
     def crear(self, stock: Stock) -> Stock:
         """Da de alta el stock de un libro.
 
@@ -675,6 +689,7 @@ class ServicioStock:
         """
         return self.__repositorio.crear(stock)
 
+    @auditar()
     def actualizar(self, stock: Stock) -> Stock:
         """Actualiza el stock de un libro.
 
@@ -686,6 +701,7 @@ class ServicioStock:
         """
         return self.__repositorio.actualizar(stock)
 
+    @auditar()
     def eliminar(self, libro_id: int) -> None:
         """Elimina el stock de un libro.
 
@@ -695,6 +711,7 @@ class ServicioStock:
         self.obtener(libro_id)
         self.__repositorio.eliminar(libro_id)
 
+    @auditar()
     def ingresar(self, libro_id: int, unidades: int) -> Stock:
         """Registra el ingreso de unidades de un libro.
 
@@ -709,6 +726,7 @@ class ServicioStock:
         stock.ingresar(unidades)
         return self.__repositorio.actualizar(stock)
 
+    @auditar()
     def retirar(self, libro_id: int, unidades: int) -> Stock:
         """Registra la salida (venta) de unidades de un libro.
 
@@ -723,6 +741,7 @@ class ServicioStock:
         stock.retirar(unidades)
         return self.__repositorio.actualizar(stock)
 
+    @auditar()
     def bajo_minimo(self) -> List[Stock]:
         """Devuelve los libros cuyo stock está por debajo del mínimo.
 
@@ -780,6 +799,7 @@ class ServicioCotizacionDolar:
             minutes=MINUTOS_VIGENCIA_COTIZACION
         )
 
+    @auditar()
     def refrescar(self) -> bool:
         """Actualiza las cotizaciones desde DolarApi si no están vigentes.
 
@@ -799,6 +819,7 @@ class ServicioCotizacionDolar:
             return False
         return True
 
+    @auditar()
     def listar(self) -> List[CotizacionDolar]:
         """Devuelve todas las cotizaciones.
 
@@ -807,6 +828,7 @@ class ServicioCotizacionDolar:
         """
         return self.__repositorio.leer_todos()
 
+    @auditar()
     def historico(self, tipo_id: int) -> List[CotizacionDolar]:
         """Devuelve el histórico de un tipo de cotización.
 
@@ -820,6 +842,7 @@ class ServicioCotizacionDolar:
         self.__servicio_tipo.obtener(tipo_id)
         return self.__repositorio.leer_historico_por_tipo(tipo_id)
 
+    @auditar()
     def obtener(self, tipo_id: int, fecha: datetime.date) -> CotizacionDolar:
         """Devuelve la cotización de un tipo en una fecha.
 
@@ -840,6 +863,7 @@ class ServicioCotizacionDolar:
             )
         return cotizacion
 
+    @auditar()
     def ultima(self, tipo_id: int) -> CotizacionDolar:
         """Devuelve la cotización más reciente de un tipo.
 
@@ -859,6 +883,7 @@ class ServicioCotizacionDolar:
             )
         return max(historico, key=lambda c: c.fecha)
 
+    @auditar()
     def crear(self, cotizacion: CotizacionDolar) -> CotizacionDolar:
         """Registra una cotización nueva.
 
@@ -892,6 +917,7 @@ class ServicioCotizacionDolar:
                 "Ya existe una cotización de ese tipo en esa fecha."
             )
 
+    @auditar()
     def actualizar(self, cotizacion: CotizacionDolar) -> CotizacionDolar:
         """Actualiza los valores de una cotización existente.
 
@@ -903,6 +929,7 @@ class ServicioCotizacionDolar:
         """
         return self.__repositorio.actualizar(cotizacion)
 
+    @auditar()
     def eliminar(self, tipo_id: int, fecha: datetime.date) -> None:
         """Elimina una cotización.
 
@@ -913,6 +940,7 @@ class ServicioCotizacionDolar:
         self.obtener(tipo_id, fecha)
         self.__repositorio.eliminar(tipo_id, fecha)
 
+    @auditar()
     def obtener_cotizaciones(
         self, timeout: float = 10
     ) -> List[CotizacionDolar]:
@@ -1029,6 +1057,7 @@ class ServicioCotizacionDolar:
             momento = momento.astimezone(ZONA_HORARIA_COTIZACIONES)
         return momento.date()
 
+    @auditar()
     def registrar_manual(
         self, tipo: TipoCotizacion, compra: float, venta: float
     ) -> CotizacionDolar:
@@ -1075,6 +1104,7 @@ class ServicioCotizacionDolar:
         existente.venta = venta
         return self.__repositorio.actualizar(existente)
 
+    @auditar()
     def convertir_a_pesos(
         self, monto: float, moneda: Moneda, tipo_id: int
     ) -> float:
@@ -1302,6 +1332,18 @@ class ResultadoScraping:
         """Comparaciones cuya diferencia alcanza el umbral."""
         return [c for c in self.comparaciones if c.alerta(self.umbral)]
 
+    def __str__(self) -> str:
+        """Representacion clara del objeto.
+
+        Returns:
+            str: Resumen de la ejecución.
+        """
+        return (
+            f"{len(self.precios)} resultados web, {len(self.alertas)} "
+            f"alertas (umbral {self.umbral}), archivo "
+            f"{os.path.basename(self.archivo_alertas)}"
+        )
+
 
 class ServicioPrecioWeb(ServicioCRUD[PrecioWeb]):
     """Lógica de los precios publicados por la competencia."""
@@ -1316,6 +1358,7 @@ class ServicioPrecioWeb(ServicioCRUD[PrecioWeb]):
         super().__init__(repositorio)
         self.__repo_web: RepositorioPrecioWeb = repositorio
 
+    @auditar()
     def registrar_varios(self, precios: List[PrecioWeb]) -> List[PrecioWeb]:
         """Registra los precios obtenidos en una ejecución del scraper.
 
@@ -1327,6 +1370,7 @@ class ServicioPrecioWeb(ServicioCRUD[PrecioWeb]):
         """
         return self.__repo_web.crear_varios(precios)
 
+    @auditar()
     def listar_por_libro(self, libro_id: int) -> List[PrecioWeb]:
         """Devuelve los precios web de un libro (los más recientes primero).
 
@@ -1338,6 +1382,7 @@ class ServicioPrecioWeb(ServicioCRUD[PrecioWeb]):
         """
         return self.__repo_web.leer_por_libro(libro_id)
 
+    @auditar()
     def ultima_ejecucion(self) -> Optional[datetime.datetime]:
         """Devuelve el inicio de la última ejecución del scraper.
 
@@ -1347,6 +1392,7 @@ class ServicioPrecioWeb(ServicioCRUD[PrecioWeb]):
         """
         return self.__repo_web.leer_ultima_ejecucion()
 
+    @auditar()
     def de_ejecucion(
         self, ejecucion: datetime.datetime
     ) -> List[PrecioWeb]:
@@ -1520,6 +1566,7 @@ class ServicioCompetencia:
         ]
         return ejecucion, self.__precios_web.registrar_varios(precios)
 
+    @auditar()
     def ejecutar_scraping(
         self,
         umbral: UmbralDiferencia,
@@ -1592,6 +1639,7 @@ class ServicioCompetencia:
             return None
         return max(candidatos, key=lambda p: (p.relevancia, -p.posicion))
 
+    @auditar()
     def ultimos_precios(self) -> List[PrecioWeb]:
         """Devuelve los precios de la última ejecución del scraper.
 
@@ -1603,6 +1651,7 @@ class ServicioCompetencia:
             return []
         return self.__precios_web.de_ejecucion(ejecucion)
 
+    @auditar()
     def comparar(
         self, tipo_id: int, precios: Optional[List[PrecioWeb]] = None
     ) -> List[ComparacionPrecio]:
@@ -1633,6 +1682,7 @@ class ServicioCompetencia:
         ]
 
     @staticmethod
+    @auditar("Competencia.generar_alertas_csv")
     def generar_alertas_csv(
         comparaciones: List[ComparacionPrecio],
         umbral: UmbralDiferencia,
@@ -1686,6 +1736,7 @@ class ServicioCompetencia:
         archivo.escribir(filas, codificacion="utf-8-sig")
         return archivo.ruta
 
+    @auditar()
     def generar_reporte_excel(
         self, tipo_id: int, carpeta: str = CARPETA_REPORTES
     ) -> str:
@@ -1817,6 +1868,7 @@ class ServicioReportes:
         self.__tipos: ServicioTipoCotizacion = servicio_tipo
         self.__monedas: ServicioMoneda = servicio_moneda
 
+    @auditar()
     def precio_en_pesos(self, libro_id: int, tipo_id: int) -> Optional[float]:
         """Precio de referencia del libro en pesos.
 
@@ -1838,6 +1890,7 @@ class ServicioReportes:
             precios, self.__cotizaciones.ultima(tipo_id)
         )
 
+    @auditar()
     def precio_en_moneda(
         self, libro_id: int, moneda: Moneda, tipo_id: int
     ) -> Optional[float]:
@@ -1918,6 +1971,7 @@ class ServicioReportes:
             agrupados.setdefault(precio.libro.id, []).append(precio)
         return agrupados
 
+    @auditar()
     def lista_bimonetaria(
         self, moneda_id: int, tipo_id: int
     ) -> List[Tuple[Libro, float, float]]:
@@ -1952,6 +2006,7 @@ class ServicioReportes:
             ))
         return filas
 
+    @auditar()
     def exportar_precios_csv(
         self, tipo_id: int, carpeta: str = CARPETA_EXPORTACION
     ) -> str:
@@ -1998,6 +2053,7 @@ class ServicioReportes:
         archivo.escribir(filas)
         return archivo.ruta
 
+    @auditar()
     def valor_inventario(
         self, tipo_id: int
     ) -> Tuple[List[Tuple[Stock, float]], float]:
@@ -2023,6 +2079,7 @@ class ServicioReportes:
                 detalle.append((stock, precio * stock.cantidad))
         return detalle, sum(subtotal for _, subtotal in detalle)
 
+    @auditar()
     def cotizar_libro(
         self, libro_id: int
     ) -> List[Tuple[TipoCotizacion, CotizacionDolar, Precio, float]]:
@@ -2064,6 +2121,58 @@ class ServicioReportes:
         return filas
 
 
+class ServicioAuditoria:
+    """Registro y consulta de la auditoría de las operaciones.
+
+    Los registros los crea el decorador @auditar (ver
+    services/auditoria.py); este servicio no permite modificarlos ni
+    borrarlos, para que el historial sea confiable.
+    """
+
+    def __init__(self, repositorio: RepositorioAuditoria) -> None:
+        """Constructor.
+
+        Args:
+            repositorio (RepositorioAuditoria): Repositorio de auditoría.
+        """
+        self.__repositorio: RepositorioAuditoria = repositorio
+
+    def registrar(
+        self,
+        accion: str,
+        detalles: str,
+        fecha: Optional[datetime.datetime] = None,
+    ) -> Auditoria:
+        """Guarda un registro de auditoría.
+
+        Args:
+            accion (str): Operación realizada.
+            detalles (str): Parámetros y resultado (o error).
+            fecha (Optional[datetime.datetime]): Momento de la operación
+                (por defecto, ahora).
+
+        Returns:
+            Auditoria: El registro creado.
+        """
+        fecha = fecha or datetime.datetime.now().replace(microsecond=0)
+        return self.__repositorio.crear(
+            Auditoria(0, accion, fecha, detalles)
+        )
+
+    @auditar("Auditoria.historial")
+    def historial(self) -> List[Auditoria]:
+        """Devuelve el historial de auditoría.
+
+        Returns:
+            List[Auditoria]: Registros del más reciente al más antiguo.
+        """
+        return sorted(
+            self.__repositorio.leer_todos(),
+            key=lambda registro: (registro.fecha, registro.id),
+            reverse=True,
+        )
+
+
 @dataclass
 class Servicios:
     """Agrupa todos los servicios del sistema."""
@@ -2079,10 +2188,14 @@ class Servicios:
     reportes: ServicioReportes
     precios_web: ServicioPrecioWeb
     competencia: ServicioCompetencia
+    auditoria: ServicioAuditoria
 
 
 def crear_servicios(repos: Repositorios) -> Servicios:
     """Instancia los servicios a partir de los repositorios.
+
+    Además configura el decorador @auditar para que guarde los registros
+    con el servicio de auditoría.
 
     Args:
         repos (Repositorios): Repositorios del sistema.
@@ -2090,6 +2203,8 @@ def crear_servicios(repos: Repositorios) -> Servicios:
     Returns:
         Servicios: Los servicios del sistema.
     """
+    auditoria = ServicioAuditoria(repos.auditoria)
+    configurar_auditoria(auditoria.registrar)
     tipos = ServicioTipoCotizacion(repos.tipos_cotizacion, repos.cotizaciones)
     libros = ServicioLibro(repos.libros, repos.precios, repos.stock)
     precios = ServicioPrecio(repos.precios)
@@ -2114,4 +2229,5 @@ def crear_servicios(repos: Repositorios) -> Servicios:
         competencia=ServicioCompetencia(
             libros, precios_web, reportes, cotizaciones
         ),
+        auditoria=auditoria,
     )

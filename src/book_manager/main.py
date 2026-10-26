@@ -43,10 +43,12 @@ def main(import_default_data: bool = False) -> None:
             datos cargados, la carga se hace igual.
     """
     conexion = ConexionDB()
+    # Los servicios se crean primero porque configuran la auditoría, que
+    # también registra la carga de datos.
+    servicios = crear_servicios(crear_repositorios(conexion))
     if import_default_data or base_vacia(conexion):
         insertados = cargar_datos_iniciales(conexion)
         print(f"Carga de datos iniciales: {insertados} registros insertados.")
-    servicios = crear_servicios(crear_repositorios(conexion))
     Consola(servicios).ejecutar()
 
 

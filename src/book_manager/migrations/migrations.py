@@ -25,6 +25,7 @@ from book_manager.models.models import (
     crear_tablas,
 )
 from book_manager.repositories.repositories import ArchivoCSV
+from book_manager.services.auditoria import auditar
 
 CARPETA_MIGRACIONES = os.path.dirname(os.path.abspath(__file__))
 CARPETA_CSV = os.path.join(CARPETA_MIGRACIONES, "csv")
@@ -226,6 +227,7 @@ def _ajustar_secuencias(conexion: ConexionDB) -> None:
             )
 
 
+@auditar("Migracion.migrar_datos")
 def migrar_datos(
     carpeta_csvs: str,
     carpeta_sqls: str,
@@ -319,6 +321,7 @@ def archivos_sql(carpeta_sqls: str) -> List[str]:
     ]
 
 
+@auditar("Migracion.cargar_datos_sql")
 def cargar_datos_sql(
     carpeta_sqls: str = CARPETA_SQL,
     conexion: Optional[ConexionDB] = None,

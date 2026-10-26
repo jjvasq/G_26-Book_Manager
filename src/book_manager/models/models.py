@@ -270,6 +270,19 @@ class PrecioWebModel(ModeloConEstado, Base):
     )
 
 
+class AuditoriaModel(ModeloConEstado, Base):
+    """Tabla de auditoría: una fila por cada operación del sistema."""
+
+    __tablename__ = "auditoria"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    accion: Mapped[str] = mapped_column(String(100), nullable=False)
+    fecha: Mapped[datetime.datetime] = mapped_column(
+        DateTime, nullable=False, index=True
+    )
+    detalles: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+
 def _indice_unico_activos(
     nombre: str, estado: Mapped[int], *expresiones: ColumnElement
 ) -> Index:

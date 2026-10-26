@@ -2,6 +2,15 @@
 
 # Sprint 3
 
+## [Ejercicio 06]
+- Se crea `services/auditoria.py` con el decorador `@auditar`: cada
+ejecución de una operación decorada registra la acción, la fecha y 
+los detalles.
+- Se agregan la entidad `Auditoria`, la tabla `auditoria` (`accion`,
+`fecha`, `detalles`), `RepositorioAuditoria` y `ServicioAuditoria`.
+- `crear_servicios` configura la auditoría, `main` crea los servicios antes
+de cargar los datos para que la carga también quede auditada.
+
 ## [Ejercicio 05]
 - Se agrega `ServicioCompetencia.generar_reporte_excel`, que genera con
 `openpyxl` un archivo en la carpeta `reportes/` con los precios de la última
