@@ -198,7 +198,8 @@ contraseña en la variable de entorno.
 Desde una consola, en el directorio `src`:
 
 ```bash
-# inicia el sistema (si la base está vacía migra los datos del Sprint 1)
+# inicia el sistema (si la base está vacía la carga desde los .sql de
+# migrations/sql; si todavía no hay .sql, migra los CSV del Sprint 1)
 python -m book_manager.main
 
 # migra los CSV del Sprint 1 y genera los .sql (es repetible: solo
@@ -217,8 +218,12 @@ from book_manager.main import main
 # usa la base existente (la migra si está vacía)
 main(import_default_data=False)
 
-# vuelve a ejecutar la migración (solo agrega los registros que faltan)
+# vuelve a cargar los datos desde los .sql (solo agrega lo que falta)
 main(import_default_data=True)
+
+# carga directa desde los archivos .sql
+from book_manager.migrations.migrations import CARPETA_SQL, cargar_datos_sql
+cargar_datos_sql(CARPETA_SQL)
 ```
 
 Los precios exportados desde el menú *Lista de precios* se guardan en
