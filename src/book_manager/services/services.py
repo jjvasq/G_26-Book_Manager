@@ -6,6 +6,7 @@ import datetime
 import difflib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -71,6 +72,11 @@ SEGUNDOS_MAXIMOS_SCRAPING = 900
 # Relevancia mínima para considerar que un resultado de la búsqueda por
 # título es el libro del catálogo.
 RELEVANCIA_MINIMA = 0.7
+
+# Carpeta donde se guardan las alertas y los reportes de la competencia.
+CARPETA_REPORTES = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "reportes"
+)
 
 # Carpeta donde se guardan los CSV de precios exportados.
 CARPETA_EXPORTACION = os.path.join(
@@ -1128,6 +1134,167 @@ def calcular_relevancia(libro: Libro, titulo: str, autor: str = "") -> float:
     return round(min(0.75 * parecido + 0.25 * coincide_autor, 1.0), 3)
 
 
+@dataclass(frozen=True)
+class UmbralDiferencia:
+    """Diferencia de precio a partir de la cual se genera una alerta.
+
+    Attributes:
+        valor (float): Diferencia mínima (mayor a cero).
+        porcentual (bool): True si valor es un porcentaje del precio
+            interno; False si es un importe en pesos.
+    """
+
+    valor: float
+    porcentual: bool = True
+
+    def __post_init__(self) -> None:
+        """Valida el valor del umbral.
+
+        Raises:
+            DatoInvalidoError: Si el valor no es un número mayor a cero.
+        """
+        if isinstance(self.valor, bool) or not isinstance(
+            self.valor, (int, float)
+        ) or self.valor <= 0:
+            raise DatoInvalidoError(
+                "La diferencia de precio debe ser un número mayor a cero."
+            )
+
+    @classmethod
+    def desde_texto(cls, texto: str) -> UmbralDiferencia:
+        """Interpreta la diferencia ingresada por el usuario.
+
+        "10%" es un porcentaje del precio interno; "5000" o "5000,50" es
+        un importe en pesos.
+
+        Args:
+            texto (str): Diferencia ingresada.
+
+        Returns:
+            UmbralDiferencia: El umbral.
+
+        Raises:
+            DatoInvalidoError: Si el texto no es un número mayor a cero.
+        """
+        limpio = texto.strip().replace(" ", "").replace("$", "")
+        porcentual = limpio.endswith("%")
+        limpio = limpio.rstrip("%")
+        if "," in limpio or re.fullmatch(r"\d{1,3}(\.\d{3})+", limpio):
+            limpio = limpio.replace(".", "").replace(",", ".")
+        try:
+            valor = float(limpio)
+        except ValueError as error:
+            raise DatoInvalidoError(
+                "Ingrese un porcentaje (ej.: 10%) o un importe en pesos "
+                "(ej.: 5000)."
+            ) from error
+        return cls(valor, porcentual)
+
+    def supera(self, precio_interno: float, diferencia: float) -> bool:
+        """Indica si una diferencia de precio alcanza el umbral.
+
+        Args:
+            precio_interno (float): Precio interno en pesos.
+            diferencia (float): Precio web menos precio interno.
+
+        Returns:
+            bool: True si la diferencia (en valor absoluto) es mayor o
+                igual al umbral.
+        """
+        if self.porcentual:
+            return abs(diferencia) / precio_interno * 100 >= self.valor
+        return abs(diferencia) >= self.valor
+
+    def __str__(self) -> str:
+        """Representacion clara del objeto.
+
+        Returns:
+            str: El umbral (ej.: "10 %" o "$ 5,000.00").
+        """
+        if self.porcentual:
+            return f"{self.valor:g} %"
+        return f"$ {self.valor:,.2f}"
+
+
+@dataclass
+class ComparacionPrecio:
+    """Comparación del precio interno de un libro con el precio web.
+
+    Attributes:
+        libro (Libro): Libro del catálogo.
+        precio_interno (Optional[float]): Precio interno en pesos (None si
+            el libro no tiene precio cargado).
+        precio_web (Optional[PrecioWeb]): Resultado de la web que
+            corresponde al libro (None si no se encontró).
+    """
+
+    libro: Libro
+    precio_interno: Optional[float]
+    precio_web: Optional[PrecioWeb]
+
+    @property
+    def comparable(self) -> bool:
+        """Indica si hay precio interno y precio web para comparar."""
+        return self.precio_interno is not None and self.precio_web is not None
+
+    @property
+    def diferencia(self) -> Optional[float]:
+        """Precio web menos precio interno, en pesos."""
+        if not self.comparable:
+            return None
+        return self.precio_web.precio - self.precio_interno
+
+    @property
+    def diferencia_porcentual(self) -> Optional[float]:
+        """Diferencia como porcentaje del precio interno."""
+        if not self.comparable:
+            return None
+        return self.diferencia / self.precio_interno * 100
+
+    def alerta(self, umbral: UmbralDiferencia) -> str:
+        """Describe la alerta de precio, si la diferencia alcanza el umbral.
+
+        Args:
+            umbral (UmbralDiferencia): Diferencia que dispara la alerta.
+
+        Returns:
+            str: "Competencia más barata", "Competencia más cara" o ""
+                si no hay alerta.
+        """
+        if not self.comparable or not umbral.supera(
+            self.precio_interno, self.diferencia
+        ):
+            return ""
+        if self.diferencia < 0:
+            return "Competencia más barata"
+        return "Competencia más cara"
+
+
+@dataclass
+class ResultadoScraping:
+    """Resultado de una ejecución del scraper.
+
+    Attributes:
+        ejecucion (datetime.datetime): Inicio de la ejecución.
+        precios (List[PrecioWeb]): Precios web registrados.
+        comparaciones (List[ComparacionPrecio]): Comparación de cada
+            libro del catálogo.
+        umbral (UmbralDiferencia): Diferencia ingresada por el usuario.
+        archivo_alertas (str): Ruta del CSV de alertas generado.
+    """
+
+    ejecucion: datetime.datetime
+    precios: List[PrecioWeb]
+    comparaciones: List[ComparacionPrecio]
+    umbral: UmbralDiferencia
+    archivo_alertas: str
+
+    @property
+    def alertas(self) -> List[ComparacionPrecio]:
+        """Comparaciones cuya diferencia alcanza el umbral."""
+        return [c for c in self.comparaciones if c.alerta(self.umbral)]
+
+
 class ServicioPrecioWeb(ServicioCRUD[PrecioWeb]):
     """Lógica de los precios publicados por la competencia."""
 
@@ -1270,6 +1437,7 @@ class ServicioCompetencia:
         servicio_libro: ServicioLibro,
         servicio_precio_web: ServicioPrecioWeb,
         servicio_reportes: ServicioReportes,
+        servicio_cotizacion: ServicioCotizacionDolar,
         ejecutor: Optional[EjecutorScraper] = None,
     ) -> None:
         """Constructor.
@@ -1280,11 +1448,14 @@ class ServicioCompetencia:
                 web.
             servicio_reportes (ServicioReportes): Servicio de reportes,
                 para el precio interno en pesos.
+            servicio_cotizacion (ServicioCotizacionDolar): Servicio de
+                cotizaciones del dólar.
             ejecutor (Optional[EjecutorScraper]): Ejecutor del scraper.
         """
         self.__libros: ServicioLibro = servicio_libro
         self.__precios_web: ServicioPrecioWeb = servicio_precio_web
         self.__reportes: ServicioReportes = servicio_reportes
+        self.__cotizaciones: ServicioCotizacionDolar = servicio_cotizacion
         self.__ejecutor: EjecutorScraper = ejecutor or EjecutorScraper()
 
     @staticmethod
@@ -1315,7 +1486,7 @@ class ServicioCompetencia:
             calcular_relevancia(libro, titulo, autor),
         )
 
-    def ejecutar_scraping(self) -> List[PrecioWeb]:
+    def _scrapear(self) -> Tuple[datetime.datetime, List[PrecioWeb]]:
         """Busca en Cúspide los libros del catálogo y guarda los precios.
 
         Por cada libro se toman los 10 primeros resultados de la búsqueda
@@ -1323,22 +1494,189 @@ class ServicioCompetencia:
         `ejecucion`.
 
         Returns:
-            List[PrecioWeb]: Precios web registrados.
+            Tuple[datetime.datetime, List[PrecioWeb]]: Inicio de la
+                ejecución y precios web registrados.
 
         Raises:
             ScrapingError: Si falla el scraper.
         """
+        ejecucion = datetime.datetime.now().replace(microsecond=0)
         libros = {libro.id: libro for libro in self.__libros.listar()}
         if not libros:
-            return []
-        ejecucion = datetime.datetime.now().replace(microsecond=0)
+            return ejecucion, []
         resultados = self.__ejecutor.ejecutar(list(libros.values()))
         precios = [
             self._a_precio_web(dato, libros[dato["libro_id"]], ejecucion)
             for dato in resultados
             if dato.get("libro_id") in libros
         ]
-        return self.__precios_web.registrar_varios(precios)
+        return ejecucion, self.__precios_web.registrar_varios(precios)
+
+    def ejecutar_scraping(
+        self,
+        umbral: UmbralDiferencia,
+        tipo_id: int,
+        carpeta: str = CARPETA_REPORTES,
+    ) -> ResultadoScraping:
+        """Ejecuta el scraper, compara los precios y genera las alertas.
+
+        Cada ejecución genera un archivo CSV de alertas con los libros
+        cuya diferencia de precio alcanza el umbral ingresado.
+
+        Args:
+            umbral (UmbralDiferencia): Diferencia que dispara una alerta.
+            tipo_id (int): Tipo de dólar para pasar a pesos los precios
+                internos en moneda extranjera.
+            carpeta (str): Carpeta donde se guarda el CSV de alertas.
+
+        Returns:
+            ResultadoScraping: Precios obtenidos, comparaciones y ruta del
+                archivo de alertas.
+
+        Raises:
+            RegistroNoEncontradoError: Si no hay cotizaciones de ese tipo
+                de dólar (se verifica antes de ejecutar el scraper).
+            ScrapingError: Si falla el scraper.
+        """
+        self._preparar_cotizacion(tipo_id)
+        ejecucion, precios = self._scrapear()
+        comparaciones = self.comparar(tipo_id, precios)
+        archivo = self.generar_alertas_csv(
+            comparaciones, umbral, ejecucion, carpeta
+        )
+        return ResultadoScraping(
+            ejecucion, precios, comparaciones, umbral, archivo
+        )
+
+    def _preparar_cotizacion(self, tipo_id: int) -> None:
+        """Actualiza las cotizaciones y verifica que haya del tipo elegido.
+
+        Si DolarApi no responde se usa la última cotización guardada.
+
+        Args:
+            tipo_id (int): ID del tipo de dólar.
+
+        Raises:
+            RegistroNoEncontradoError: Si no hay cotizaciones de ese tipo.
+        """
+        self.__cotizaciones.refrescar()
+        self.__cotizaciones.ultima(tipo_id)
+
+    @staticmethod
+    def mejor_resultado(precios: List[PrecioWeb]) -> Optional[PrecioWeb]:
+        """Elige, entre los resultados de un libro, el que le corresponde.
+
+        Se toma el de mayor relevancia (a igual relevancia, el que aparece
+        primero en la búsqueda), siempre que alcance la relevancia mínima.
+
+        Args:
+            precios (List[PrecioWeb]): Resultados de la búsqueda del libro.
+
+        Returns:
+            Optional[PrecioWeb]: El resultado elegido, o None si ninguno
+                se parece lo suficiente al libro.
+        """
+        candidatos = [
+            precio for precio in precios
+            if precio.relevancia >= RELEVANCIA_MINIMA
+        ]
+        if not candidatos:
+            return None
+        return max(candidatos, key=lambda p: (p.relevancia, -p.posicion))
+
+    def ultimos_precios(self) -> List[PrecioWeb]:
+        """Devuelve los precios de la última ejecución del scraper.
+
+        Returns:
+            List[PrecioWeb]: Precios web (vacío si nunca se ejecutó).
+        """
+        ejecucion = self.__precios_web.ultima_ejecucion()
+        if ejecucion is None:
+            return []
+        return self.__precios_web.de_ejecucion(ejecucion)
+
+    def comparar(
+        self, tipo_id: int, precios: Optional[List[PrecioWeb]] = None
+    ) -> List[ComparacionPrecio]:
+        """Compara el precio interno de cada libro con el precio web.
+
+        Args:
+            tipo_id (int): Tipo de dólar para pasar a pesos los precios
+                internos en moneda extranjera.
+            precios (Optional[List[PrecioWeb]]): Precios web a comparar
+                (por defecto, los de la última ejecución del scraper).
+
+        Returns:
+            List[ComparacionPrecio]: Una comparación por libro del
+                catálogo.
+        """
+        if precios is None:
+            precios = self.ultimos_precios()
+        por_libro: Dict[int, List[PrecioWeb]] = {}
+        for precio in precios:
+            por_libro.setdefault(precio.libro.id, []).append(precio)
+        return [
+            ComparacionPrecio(
+                libro,
+                self.__reportes.precio_en_pesos(libro.id, tipo_id),
+                self.mejor_resultado(por_libro.get(libro.id, [])),
+            )
+            for libro in self.__libros.listar()
+        ]
+
+    @staticmethod
+    def generar_alertas_csv(
+        comparaciones: List[ComparacionPrecio],
+        umbral: UmbralDiferencia,
+        ejecucion: datetime.datetime,
+        carpeta: str = CARPETA_REPORTES,
+    ) -> str:
+        """Genera el archivo CSV de alertas de precio.
+
+        Incluye los libros cuya diferencia con el precio web alcanza el
+        umbral (el archivo se genera aunque no haya alertas).
+
+        Args:
+            comparaciones (List[ComparacionPrecio]): Comparaciones.
+            umbral (UmbralDiferencia): Diferencia que dispara una alerta.
+            ejecucion (datetime.datetime): Inicio de la ejecución.
+            carpeta (str): Carpeta donde se guarda el archivo.
+
+        Returns:
+            str: Ruta del archivo generado.
+        """
+        campos = [
+            "fecha_extraccion", "libro_id", "isbn", "libro",
+            "precio_interno", "precio_web", "diferencia",
+            "diferencia_porcentual", "umbral", "alerta", "url_web",
+        ]
+        filas: List[Dict[str, object]] = []
+        for comparacion in comparaciones:
+            alerta = comparacion.alerta(umbral)
+            if not alerta:
+                continue
+            web = comparacion.precio_web
+            filas.append({
+                "fecha_extraccion": web.fecha_extraccion.isoformat(" "),
+                "libro_id": comparacion.libro.id,
+                "isbn": comparacion.libro.isbn,
+                "libro": comparacion.libro.titulo,
+                "precio_interno": f"{comparacion.precio_interno:.2f}",
+                "precio_web": f"{web.precio:.2f}",
+                "diferencia": f"{comparacion.diferencia:.2f}",
+                "diferencia_porcentual": (
+                    f"{comparacion.diferencia_porcentual:.2f}"
+                ),
+                "umbral": str(umbral),
+                "alerta": alerta,
+                "url_web": web.url,
+            })
+        os.makedirs(carpeta, exist_ok=True)
+        nombre = ejecucion.strftime("alertas_%Y%m%d_%H%M%S.csv")
+        archivo = ArchivoCSV(nombre, campos, carpeta)
+        # Con BOM, Excel abre el archivo con las tildes correctas.
+        archivo.escribir(filas, codificacion="utf-8-sig")
+        return archivo.ruta
 
 
 class ServicioReportes:
@@ -1666,5 +2004,7 @@ def crear_servicios(repos: Repositorios) -> Servicios:
         cotizaciones=cotizaciones,
         reportes=reportes,
         precios_web=precios_web,
-        competencia=ServicioCompetencia(libros, precios_web, reportes),
+        competencia=ServicioCompetencia(
+            libros, precios_web, reportes, cotizaciones
+        ),
     )

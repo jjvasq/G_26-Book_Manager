@@ -321,13 +321,17 @@ class ArchivoCSV:
             if linea
         ]
 
-    def escribir(self, filas: List[Dict[str, object]]) -> None:
+    def escribir(
+        self, filas: List[Dict[str, object]], codificacion: str = "utf-8"
+    ) -> None:
         """Sobrescribe el archivo con las filas indicadas.
 
         Args:
             filas (List[Dict[str, object]]): Filas a escribir.
+            codificacion (str): Codificación del archivo. "utf-8-sig"
+                agrega la marca BOM para que Excel muestre bien las tildes.
         """
-        with open(self.__ruta, "w", encoding="utf-8") as archivo:
+        with open(self.__ruta, "w", encoding=codificacion) as archivo:
             archivo.write(self._unir(self.__campos) + "\n")
             for fila in filas:
                 valores = [fila[campo] for campo in self.__campos]

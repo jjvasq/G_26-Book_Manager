@@ -2,6 +2,18 @@
 
 # Sprint 3
 
+## [Ejercicio 04]
+- Se agrega `UmbralDiferencia`: la diferencia de precio que dispara una
+alerta, ingresada por el usuario como porcentaje del precio interno
+o como importe en pesos.
+- Se agrega `ComparacionPrecio` (precio interno, precio web, diferencia en
+pesos y porcentual, y tipo de alerta).
+- `ServicioCompetencia.ejecutar_scraping` recibe el umbral: ejecuta el scraper,
+compara cada libro con el resultado web que le corresponde y en cada ejecución
+genera un CSV de alertas en `reportes/`.
+- El precio interno es el precio en pesos del libro: si solo tiene precio en
+otra moneda, se convierte con el tipo de moneda elegida.
+
 ## [Ejercicio 03]
 - Se crea el proyecto Scrapy en `scraper/`.
 - `CuspideSpider` busca en Cúspide cada libro del catálogo por su título,
