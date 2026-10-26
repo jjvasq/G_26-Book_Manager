@@ -1047,11 +1047,14 @@ class Consola:
             ui.info(f"El archivo quedó guardado en: {ruta}")
             return
         respuesta = ui.preguntar(
-            "¿Descargar el archivo a su equipo ahora? (s/n)"
+            "¿Descargar el archivo a su equipo? (s/n)"
         ).strip().lower()
         if respuesta in ("s", "si", "sí"):
             descargar_archivo(ruta)
-            ui.exito("Descarga iniciada en el navegador.")
+            ui.exito(
+                "Descarga pedida: el navegador la hace al cerrar el "
+                "programa (opción 0)."
+            )
         else:
             ui.info(
                 "Puede descargarlo después con la celda de descarga del "
