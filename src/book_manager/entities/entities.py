@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import datetime
 from abc import ABC
+from dataclasses import dataclass
+from typing import List, Optional
 
 from book_manager.exceptions.exceptions import (
     DatoInvalidoError,
@@ -60,6 +62,25 @@ def _validar_decimal(valor: float, campo: str) -> float:
     if valor <= 0:
         raise DatoInvalidoError(f"El campo '{campo}' debe ser mayor a cero.")
     return float(valor)
+
+
+def _validar_momento(
+    valor: datetime.datetime, campo: str
+) -> datetime.datetime:
+    """Valida que un valor sea una fecha y hora.
+
+    Args:
+        valor (datetime.datetime): Valor a validar.
+        campo (str): Nombre del campo, para el mensaje de error.
+
+    Returns:
+        datetime.datetime: El valor validado.
+    """
+    if not isinstance(valor, datetime.datetime):
+        raise DatoInvalidoError(
+            f"El campo '{campo}' debe ser una fecha y hora."
+        )
+    return valor
 
 
 def _validar_entero(valor: int, campo: str, minimo: int = 0) -> int:
@@ -716,3 +737,217 @@ class CotizacionDolar:
             f"| compra $ {self.compra:,.2f} | venta $ {self.venta:,.2f}"
         )
         
+
+@dataclass(frozen=True)
+class FormaPago:
+    """Forma de pago que ofrece un sitio y el precio con esa forma.
+
+    Attributes:
+        forma (str): Nombre de la forma de pago (ej.: "MercadoPago").
+        detalle (str): Aclaración que informa el sitio.
+        alcance (str): "Argentina" o "Internacional".
+        moneda (str): Código de la moneda del precio.
+        precio (Optional[float]): Precio con esa forma de pago.
+    """
+
+    forma: str
+    detalle: str = ""
+    alcance: str = "Argentina"
+    moneda: str = "ARS"
+    precio: Optional[float] = None
+
+    def __str__(self) -> str:
+        """Representacion clara del objeto.
+
+        Returns:
+            str: Forma de pago y precio.
+        """
+        precio = "" if self.precio is None else (
+            f" {self.moneda} {self.precio:,.2f}"
+        )
+        return f"{self.forma} ({self.alcance}){precio}"
+
+
+class PrecioWeb(EntidadBase):
+    """Precio de un libro del catálogo publicado por un competidor.
+
+    Cada registro es uno de los resultados de la búsqueda del libro en el
+    sitio, obtenido en una ejecución del scraper.
+    """
+
+    def __init__(
+        self,
+        id: int,
+        libro: Libro,
+        sitio: str,
+        ejecucion: datetime.datetime,
+        fecha_extraccion: datetime.datetime,
+        posicion: int,
+        titulo: str,
+        url: str,
+        precio: float,
+        autor: str = "",
+        isbn: str = "",
+        url_imagen: str = "",
+        precio_usd: Optional[float] = None,
+        formas_pago: Optional[List[FormaPago]] = None,
+        descripcion: str = "",
+        relevancia: float = 0.0,
+    ) -> None:
+        """Constructor.
+
+        Args:
+            id (int): ID de la entidad (0 si todavía no fue almacenada).
+            libro (Libro): Libro del catálogo que se buscó.
+            sitio (str): Nombre del sitio (ej.: "Cúspide").
+            ejecucion (datetime.datetime): Inicio de la ejecución del
+                scraper que obtuvo el dato.
+            fecha_extraccion (datetime.datetime): Momento en que se leyó
+                la página del producto.
+            posicion (int): Posición del producto en la búsqueda (1 a 10).
+            titulo (str): Título publicado en el sitio.
+            url (str): URL de la página del producto.
+            precio (float): Precio en pesos.
+            autor (str): Autor publicado en el sitio.
+            isbn (str): ISBN publicado en el sitio.
+            url_imagen (str): URL de la imagen de tapa.
+            precio_usd (Optional[float]): Precio en dólares, si el sitio
+                lo informa.
+            formas_pago (Optional[List[FormaPago]]): Formas de pago con su
+                precio.
+            descripcion (str): Descripción detallada del producto.
+            relevancia (float): Entre 0 y 1, cuánto se parece el producto
+                al libro buscado (por título y autor).
+        """
+        super().__init__(id)
+        self.libro: Libro = libro
+        self.sitio: str = sitio
+        self.ejecucion: datetime.datetime = ejecucion
+        self.fecha_extraccion: datetime.datetime = fecha_extraccion
+        self.posicion: int = posicion
+        self.titulo: str = titulo
+        self.url: str = url
+        self.precio: float = precio
+        self.autor: str = autor or ""
+        self.isbn: str = isbn or ""
+        self.url_imagen: str = url_imagen or ""
+        self.precio_usd: Optional[float] = precio_usd
+        self.formas_pago: List[FormaPago] = list(formas_pago or [])
+        self.descripcion: str = descripcion or ""
+        self.relevancia: float = relevancia
+
+    @property
+    def libro(self) -> Libro:
+        """Libro del catálogo que se buscó."""
+        return self.__libro
+
+    @libro.setter
+    def libro(self, valor: Libro) -> None:
+        if not isinstance(valor, Libro):
+            raise DatoInvalidoError(
+                "El libro debe ser una instancia de Libro."
+            )
+        self.__libro: Libro = valor
+
+    @property
+    def sitio(self) -> str:
+        """Nombre del sitio de la competencia."""
+        return self.__sitio
+
+    @sitio.setter
+    def sitio(self, valor: str) -> None:
+        self.__sitio: str = _validar_texto(valor, "sitio")
+
+    @property
+    def ejecucion(self) -> datetime.datetime:
+        """Inicio de la ejecución del scraper que obtuvo el dato."""
+        return self.__ejecucion
+
+    @ejecucion.setter
+    def ejecucion(self, valor: datetime.datetime) -> None:
+        self.__ejecucion: datetime.datetime = _validar_momento(
+            valor, "ejecución"
+        )
+
+    @property
+    def fecha_extraccion(self) -> datetime.datetime:
+        """Momento en que se leyó la página del producto."""
+        return self.__fecha_extraccion
+
+    @fecha_extraccion.setter
+    def fecha_extraccion(self, valor: datetime.datetime) -> None:
+        self.__fecha_extraccion: datetime.datetime = _validar_momento(
+            valor, "fecha de extracción"
+        )
+
+    @property
+    def posicion(self) -> int:
+        """Posición del producto en los resultados de la búsqueda."""
+        return self.__posicion
+
+    @posicion.setter
+    def posicion(self, valor: int) -> None:
+        self.__posicion: int = _validar_entero(valor, "posición", minimo=1)
+
+    @property
+    def titulo(self) -> str:
+        """Título publicado en el sitio."""
+        return self.__titulo
+
+    @titulo.setter
+    def titulo(self, valor: str) -> None:
+        self.__titulo: str = _validar_texto(valor, "título")
+
+    @property
+    def url(self) -> str:
+        """URL de la página del producto."""
+        return self.__url
+
+    @url.setter
+    def url(self, valor: str) -> None:
+        self.__url: str = _validar_texto(valor, "URL")
+
+    @property
+    def precio(self) -> float:
+        """Precio en pesos publicado en el sitio."""
+        return self.__precio
+
+    @precio.setter
+    def precio(self, valor: float) -> None:
+        self.__precio: float = _validar_decimal(valor, "precio")
+
+    @property
+    def precio_usd(self) -> Optional[float]:
+        """Precio en dólares publicado en el sitio, si lo hay."""
+        return self.__precio_usd
+
+    @precio_usd.setter
+    def precio_usd(self, valor: Optional[float]) -> None:
+        self.__precio_usd: Optional[float] = (
+            None if valor is None else _validar_decimal(valor, "precio USD")
+        )
+
+    @property
+    def relevancia(self) -> float:
+        """Parecido del producto con el libro buscado (0 a 1)."""
+        return self.__relevancia
+
+    @relevancia.setter
+    def relevancia(self, valor: float) -> None:
+        if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+            raise DatoInvalidoError("La relevancia debe ser numérica.")
+        if not 0 <= valor <= 1:
+            raise DatoInvalidoError("La relevancia debe estar entre 0 y 1.")
+        self.__relevancia: float = float(valor)
+
+    def __str__(self) -> str:
+        """Representacion clara del objeto.
+
+        Returns:
+            str: Representacion clara del objeto.
+        """
+        return (
+            f"[{self.id}] {self.sitio} #{self.posicion} {self.titulo} "
+            f"$ {self.precio:,.2f} ({self.fecha_extraccion:%Y-%m-%d %H:%M})"
+            f" -> libro {self.libro.id}"
+        )

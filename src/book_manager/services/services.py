@@ -3,9 +3,17 @@
 from __future__ import annotations
 
 import datetime
+import difflib
+import json
 import os
+import subprocess
+import sys
+import tempfile
+import unicodedata
 from dataclasses import dataclass
-from typing import Callable, Dict, Generic, List, Optional, Tuple, TypeVar
+from typing import (
+    Any, Callable, Dict, Generic, List, Optional, Tuple, TypeVar,
+)
 from zoneinfo import ZoneInfo
 
 import requests
@@ -16,10 +24,12 @@ from book_manager.entities.entities import (
     CotizacionDolar,
     Editorial,
     EntidadBase,
+    FormaPago,
     Genero,
     Libro,
     Moneda,
     Precio,
+    PrecioWeb,
     Stock,
     TipoCotizacion,
 )
@@ -30,6 +40,7 @@ from book_manager.exceptions.exceptions import (
     RegistroDuplicadoError,
     RegistroEnUsoError,
     RegistroNoEncontradoError,
+    ScrapingError,
 )
 from book_manager.repositories.repositories import (
     ArchivoCSV,
@@ -38,11 +49,28 @@ from book_manager.repositories.repositories import (
     IRepositorioStock,
     RepositorioLibro,
     RepositorioPrecio,
+    RepositorioPrecioWeb,
     RepositorioStock,
     Repositorios,
 )
 
 T = TypeVar("T", bound=EntidadBase)
+
+# Carpeta src del proyecto, que debe estar en el PYTHONPATH del proceso del
+# scraper.
+CARPETA_SRC = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+)
+
+# Sitio de la competencia que recorre el scraper.
+SITIO_CUSPIDE = "Cúspide"
+
+# Segundos máximos que puede durar una ejecución del scraper.
+SEGUNDOS_MAXIMOS_SCRAPING = 900
+
+# Relevancia mínima para considerar que un resultado de la búsqueda por
+# título es el libro del catálogo.
+RELEVANCIA_MINIMA = 0.7
 
 # Carpeta donde se guardan los CSV de precios exportados.
 CARPETA_EXPORTACION = os.path.join(
@@ -1052,6 +1080,267 @@ class ServicioCotizacionDolar:
         return monto * moneda.equivalencia_usd * cotizacion.venta
 
 
+def normalizar_texto(texto: str) -> str:
+    """Pasa un texto a minúsculas, sin tildes ni signos de puntuación.
+
+    Args:
+        texto (str): Texto a normalizar.
+
+    Returns:
+        str: Texto normalizado, con las palabras separadas por un espacio.
+    """
+    sin_tildes = unicodedata.normalize("NFKD", texto)
+    letras = "".join(
+        c.lower() if c.isalnum() else " "
+        for c in sin_tildes
+        if not unicodedata.combining(c)
+    )
+    return " ".join(letras.split())
+
+
+def calcular_relevancia(libro: Libro, titulo: str, autor: str = "") -> float:
+    """Calcula cuánto se parece un resultado de la búsqueda al libro.
+
+    La búsqueda en el sitio es por título, y la elección del resultado
+    también: se combina el parecido del título (75 %) con la coincidencia
+    del autor (25 %).
+
+    Args:
+        libro (Libro): Libro del catálogo.
+        titulo (str): Título del resultado.
+        autor (str): Autor del resultado.
+
+    Returns:
+        float: Relevancia entre 0 y 1.
+    """
+    buscado = normalizar_texto(libro.titulo)
+    encontrado = normalizar_texto(titulo)
+    parecido = difflib.SequenceMatcher(None, buscado, encontrado).ratio()
+    if buscado and f" {buscado} " in f" {encontrado} ":
+        parecido = max(parecido, 0.9)
+    palabras_autor = {
+        palabra for palabra in normalizar_texto(libro.autor).split()
+        if len(palabra) > 2
+    }
+    coincide_autor = bool(
+        palabras_autor & set(normalizar_texto(autor).split())
+    )
+    return round(min(0.75 * parecido + 0.25 * coincide_autor, 1.0), 3)
+
+
+class ServicioPrecioWeb(ServicioCRUD[PrecioWeb]):
+    """Lógica de los precios publicados por la competencia."""
+
+    def __init__(self, repositorio: RepositorioPrecioWeb) -> None:
+        """Constructor.
+
+        Args:
+            repositorio (RepositorioPrecioWeb): Repositorio principal del
+                servicio.
+        """
+        super().__init__(repositorio)
+        self.__repo_web: RepositorioPrecioWeb = repositorio
+
+    def registrar_varios(self, precios: List[PrecioWeb]) -> List[PrecioWeb]:
+        """Registra los precios obtenidos en una ejecución del scraper.
+
+        Args:
+            precios (List[PrecioWeb]): Precios nuevos.
+
+        Returns:
+            List[PrecioWeb]: Los precios registrados, con su ID.
+        """
+        return self.__repo_web.crear_varios(precios)
+
+    def listar_por_libro(self, libro_id: int) -> List[PrecioWeb]:
+        """Devuelve los precios web de un libro (los más recientes primero).
+
+        Args:
+            libro_id (int): ID del libro.
+
+        Returns:
+            List[PrecioWeb]: Precios web del libro.
+        """
+        return self.__repo_web.leer_por_libro(libro_id)
+
+    def ultima_ejecucion(self) -> Optional[datetime.datetime]:
+        """Devuelve el inicio de la última ejecución del scraper.
+
+        Returns:
+            Optional[datetime.datetime]: Inicio de la ejecución, o None
+                si nunca se ejecutó.
+        """
+        return self.__repo_web.leer_ultima_ejecucion()
+
+    def de_ejecucion(
+        self, ejecucion: datetime.datetime
+    ) -> List[PrecioWeb]:
+        """Devuelve los precios obtenidos en una ejecución del scraper.
+
+        Args:
+            ejecucion (datetime.datetime): Inicio de la ejecución.
+
+        Returns:
+            List[PrecioWeb]: Precios de la ejecución.
+        """
+        return self.__repo_web.leer_por_ejecucion(ejecucion)
+
+
+class EjecutorScraper:
+    """Ejecuta CuspideSpider en un proceso de Python aparte.
+
+    Scrapy usa Twisted, cuyo reactor no se puede reiniciar dentro de un
+    mismo proceso; ejecutarlo aparte permite repetir el scraping desde el
+    menú sin reiniciar el notebook.
+    """
+
+    def __init__(
+        self,
+        url_base: Optional[str] = None,
+        segundos_maximos: int = SEGUNDOS_MAXIMOS_SCRAPING,
+    ) -> None:
+        """Constructor.
+
+        Args:
+            url_base (Optional[str]): URL del sitio (por defecto Cúspide).
+            segundos_maximos (int): Tiempo máximo de la ejecución.
+        """
+        self.__url_base: Optional[str] = url_base
+        self.__segundos_maximos: int = segundos_maximos
+
+    def ejecutar(self, libros: List[Libro]) -> List[Dict[str, Any]]:
+        """Busca los libros en el sitio y devuelve los resultados.
+
+        Args:
+            libros (List[Libro]): Libros del catálogo a buscar.
+
+        Returns:
+            List[Dict[str, Any]]: Un diccionario por resultado, con los
+                campos de LibroWebItem.
+
+        Raises:
+            ScrapingError: Si el proceso del scraper falla o demora más
+                del tiempo máximo.
+        """
+        with tempfile.TemporaryDirectory(prefix="scraping_") as carpeta:
+            catalogo = os.path.join(carpeta, "catalogo.json")
+            salida = os.path.join(carpeta, "resultados.jsonl")
+            with open(catalogo, "w", encoding="utf-8") as archivo:
+                json.dump(
+                    [{"id": libro.id, "titulo": libro.titulo}
+                     for libro in libros],
+                    archivo, ensure_ascii=False,
+                )
+            comando = [
+                sys.executable, "-m", "book_manager.scraper.ejecutar",
+                "--catalogo", catalogo, "--salida", salida,
+            ]
+            if self.__url_base:
+                comando += ["--url-base", self.__url_base]
+            entorno = dict(os.environ)
+            entorno["PYTHONPATH"] = os.pathsep.join(
+                filter(None, [CARPETA_SRC, entorno.get("PYTHONPATH")])
+            )
+            try:
+                proceso = subprocess.run(
+                    comando, capture_output=True, text=True, env=entorno,
+                    timeout=self.__segundos_maximos,
+                )
+            except subprocess.TimeoutExpired as error:
+                raise ScrapingError(
+                    "El scraping superó el tiempo máximo de "
+                    f"{self.__segundos_maximos} segundos."
+                ) from error
+            if proceso.returncode != 0:
+                ultimas = "\n".join(proceso.stderr.strip().splitlines()[-5:])
+                raise ScrapingError(f"Falló el scraper:\n{ultimas}")
+            if not os.path.exists(salida):
+                return []
+            with open(salida, "r", encoding="utf-8") as archivo:
+                return [
+                    json.loads(linea) for linea in archivo if linea.strip()
+                ]
+
+
+class ServicioCompetencia:
+    """Precios de la competencia: scraping, comparación y reportes."""
+
+    def __init__(
+        self,
+        servicio_libro: ServicioLibro,
+        servicio_precio_web: ServicioPrecioWeb,
+        servicio_reportes: ServicioReportes,
+        ejecutor: Optional[EjecutorScraper] = None,
+    ) -> None:
+        """Constructor.
+
+        Args:
+            servicio_libro (ServicioLibro): Servicio de libros.
+            servicio_precio_web (ServicioPrecioWeb): Servicio de precios
+                web.
+            servicio_reportes (ServicioReportes): Servicio de reportes,
+                para el precio interno en pesos.
+            ejecutor (Optional[EjecutorScraper]): Ejecutor del scraper.
+        """
+        self.__libros: ServicioLibro = servicio_libro
+        self.__precios_web: ServicioPrecioWeb = servicio_precio_web
+        self.__reportes: ServicioReportes = servicio_reportes
+        self.__ejecutor: EjecutorScraper = ejecutor or EjecutorScraper()
+
+    @staticmethod
+    def _a_precio_web(
+        dato: Dict[str, Any], libro: Libro, ejecucion: datetime.datetime
+    ) -> PrecioWeb:
+        """Convierte un resultado del scraper en un PrecioWeb.
+
+        Args:
+            dato (Dict[str, Any]): Resultado del scraper.
+            libro (Libro): Libro que se buscó.
+            ejecucion (datetime.datetime): Inicio de la ejecución.
+
+        Returns:
+            PrecioWeb: El precio web, con su relevancia calculada.
+        """
+        titulo = dato["titulo"]
+        autor = dato.get("autor") or ""
+        isbn = dato.get("isbn") or ""
+        return PrecioWeb(
+            0, libro, SITIO_CUSPIDE, ejecucion,
+            datetime.datetime.fromisoformat(dato["fecha_extraccion"]),
+            dato["posicion"], titulo, dato["url"], float(dato["precio"]),
+            autor, isbn, dato.get("url_imagen") or "",
+            dato.get("precio_usd"),
+            [FormaPago(**forma) for forma in dato.get("formas_pago") or []],
+            dato.get("descripcion") or "",
+            calcular_relevancia(libro, titulo, autor),
+        )
+
+    def ejecutar_scraping(self) -> List[PrecioWeb]:
+        """Busca en Cúspide los libros del catálogo y guarda los precios.
+
+        Por cada libro se toman los 10 primeros resultados de la búsqueda
+        por título; todos se registran en la base con la misma
+        `ejecucion`.
+
+        Returns:
+            List[PrecioWeb]: Precios web registrados.
+
+        Raises:
+            ScrapingError: Si falla el scraper.
+        """
+        libros = {libro.id: libro for libro in self.__libros.listar()}
+        if not libros:
+            return []
+        ejecucion = datetime.datetime.now().replace(microsecond=0)
+        resultados = self.__ejecutor.ejecutar(list(libros.values()))
+        precios = [
+            self._a_precio_web(dato, libros[dato["libro_id"]], ejecucion)
+            for dato in resultados
+            if dato.get("libro_id") in libros
+        ]
+        return self.__precios_web.registrar_varios(precios)
+
+
 class ServicioReportes:
     """Reportes que combinan información de varias entidades."""
 
@@ -1343,6 +1632,8 @@ class Servicios:
     stock: ServicioStock
     cotizaciones: ServicioCotizacionDolar
     reportes: ServicioReportes
+    precios_web: ServicioPrecioWeb
+    competencia: ServicioCompetencia
 
 
 def crear_servicios(repos: Repositorios) -> Servicios:
@@ -1360,6 +1651,10 @@ def crear_servicios(repos: Repositorios) -> Servicios:
     stock = ServicioStock(repos.stock)
     cotizaciones = ServicioCotizacionDolar(repos.cotizaciones, tipos)
     monedas = ServicioMoneda(repos.monedas, repos.precios)
+    reportes = ServicioReportes(
+        libros, precios, stock, cotizaciones, tipos, monedas
+    )
+    precios_web = ServicioPrecioWeb(repos.precios_web)
     return Servicios(
         generos=ServicioGenero(repos.generos, repos.libros),
         editoriales=ServicioEditorial(repos.editoriales, repos.libros),
@@ -1369,7 +1664,7 @@ def crear_servicios(repos: Repositorios) -> Servicios:
         precios=precios,
         stock=stock,
         cotizaciones=cotizaciones,
-        reportes=ServicioReportes(
-            libros, precios, stock, cotizaciones, tipos, monedas
-        ),
+        reportes=reportes,
+        precios_web=precios_web,
+        competencia=ServicioCompetencia(libros, precios_web, reportes),
     )
