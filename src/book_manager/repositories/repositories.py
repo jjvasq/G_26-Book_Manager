@@ -556,18 +556,18 @@ class RepositorioSQL(IRepositorio[T]):
                 valor único repetido.
         """
         try:
-        with self._conexion.transaccion() as sesion:
-            if entidad.id and sesion.get(self.MODELO, entidad.id):
-                raise RegistroDuplicadoError(
-                    f"Ya existe una entidad con ID {entidad.id}."
-                )
-            modelo = self.MODELO(estado=ACTIVO)
-            if entidad.id:
-                modelo.id = entidad.id
-            self._copiar(entidad, modelo)
-            sesion.add(modelo)
-            sesion.flush()
-            entidad.id = modelo.id
+            with self._conexion.transaccion() as sesion:
+                if entidad.id and sesion.get(self.MODELO, entidad.id):
+                    raise RegistroDuplicadoError(
+                        f"Ya existe una entidad con ID {entidad.id}."
+                    )
+                modelo = self.MODELO(estado=ACTIVO)
+                if entidad.id:
+                    modelo.id = entidad.id
+                self._copiar(entidad, modelo)
+                sesion.add(modelo)
+                sesion.flush()
+                entidad.id = modelo.id
         except IntegrityError as error:
             raise RegistroDuplicadoError(
                 "La base de datos rechazó el alta: ya existe un registro "
@@ -617,13 +617,13 @@ class RepositorioSQL(IRepositorio[T]):
                 un valor único repetido.
         """
         try:
-        with self._conexion.transaccion() as sesion:
-            modelo = self._modelo_activo(sesion, entidad.id)
-            if modelo is None:
-                raise RegistroNoEncontradoError(
-                    f"No existe una entidad con ID {entidad.id}."
-                )
-            self._copiar(entidad, modelo)
+            with self._conexion.transaccion() as sesion:
+                modelo = self._modelo_activo(sesion, entidad.id)
+                if modelo is None:
+                    raise RegistroNoEncontradoError(
+                        f"No existe una entidad con ID {entidad.id}."
+                    )
+                self._copiar(entidad, modelo)
         except IntegrityError as error:
             raise RegistroDuplicadoError(
                 "La base de datos rechazó la modificación: ya existe un "

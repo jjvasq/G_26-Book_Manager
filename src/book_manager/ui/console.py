@@ -218,7 +218,8 @@ class Consola:
         """
         sufijo = f" [{actual:g}]" if actual is not None else ""
         while True:
-            valor = ui.preguntar(f"{mensaje}{sufijo}: ").strip().replace(",", ".")
+            valor = ui.preguntar(f"{mensaje}{sufijo}: ")
+            valor = valor.strip().replace(",", ".")
             if not valor and actual is not None:
                 return actual
             try:
@@ -742,7 +743,8 @@ class Consola:
                 lambda: self._pedir_entero("Cantidad de ejemplares"), simular
             )
             operacion = servicio.ingresar if ingreso else servicio.retirar
-            ui.exito(f"Stock resultante: {operacion(stock.libro_id, unidades)}")
+            resultante = operacion(stock.libro_id, unidades)
+            ui.exito(f"Stock resultante: {resultante}")
 
         self._menu_crud(
             "Inicio › Depósito (stock)",

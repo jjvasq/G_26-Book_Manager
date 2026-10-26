@@ -4,6 +4,10 @@ __pycache__/
 *.bak
 /src/book_manager/exports
 
-# Variables de entorno con datos de conexi�n: se versiona solo la plantilla
+# Variables de entorno con datos de conexión: se versiona solo la plantilla
 # .env.example.
 .env
+
+# Archivos generados en tiempo de ejecución (alertas y reportes).
+/src/book_manager/reportes/*
+!/src/book_manager/reportes/.gitkeep

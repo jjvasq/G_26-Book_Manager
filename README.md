@@ -8,6 +8,72 @@ Sistema de gestión de libros desarrollado en Python para la materia
 - Pappalardo, Carla Giorgina
 - Vasquez, Juan José
 
+## Sprint 3
+
+### Objetivo
+
+Obtener información del catálogo de la web de Cúspide para comparar los
+precios con los nuestros. Y también poder auditar todas las operaciones
+del sistema.
+
+### Introducción y contexto
+
+En este sprint se parte del Sprint 2 (persistencia en PostgreSQL con
+SQLAlchemy y cotizaciones desde DolarApi) y se agrega:
+
+Carga de los datos de la base desde los archivos `.sql` de la migración.
+Un scraper hecho con Scrapy (`CuspideSpider`, con *items*, *loaders* y
+*pipelines*) que busca en [Cúspide](https://cuspide.com) cada título del
+catálogo y toma los 10 primeros resultados de cada búsqueda: precio, URL
+de la imagen, formas de pago con su precio y descripción detallada. Solo
+se buscan libros del catálogo.
+La comparación del precio interno con el precio web. Antes de cada
+ejecución el usuario ingresa la diferencia que dispara una alerta (en
+porcentaje o en pesos) y se genera un archivo CSV de alertas.
+Un reporte en Excel con libro, precio interno, precio web, diferencia y
+fecha de extracción.
+Un decorador de auditoría: cada operación queda registrada en la tabla
+`auditoria` con la acción, la fecha y los detalles.
+Las opciones de menú *Ejecutar scraping*, *Generar reporte* y *Ver
+historial de auditoría*.
+
+---
+
+## Nueva Estructura del Proyecto
+
+```text
+├── src/
+│   └── book_manager/
+│       ├── database/
+│       │   └── connection.py
+│       ├── entities/
+│       │   └── entities.py
+│       ├── models/
+│       │   └── models.py
+│       ├── preload_data/
+│       │   └── preload_data.py
+│       ├── repositories/
+│       │   └── repositories.py
+│       ├── scraper
+│       │   └── (estructura del scraper scrapy)
+│       ├── services/
+│       │   └── services.py
+│       ├── migrations
+│       │   ├── csv
+│       │   └── sql
+│       ├── reportes
+│       │   └── (reportes excel generados)
+│       ├── ui/
+│       │   └── console.py
+│       └── main.py
+├── .env.example      (plantilla; el .env real no se versiona)
+├── CHANGELOG.md
+├── README.md
+└── requirements.txt
+```
+
+---
+
 ## Sprint 2
 
 ### Objetivo

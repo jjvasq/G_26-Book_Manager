@@ -12,3 +12,7 @@ python-dotenv>=1.0
 psycopg2-binary>=2.9
 # Formato de la interfaz de consola
 rich>=13
+# Scraping de precios de la competencia (Cúspide).
+scrapy>=2.11
+# Reportes en Excel.
+openpyxl>=3.1

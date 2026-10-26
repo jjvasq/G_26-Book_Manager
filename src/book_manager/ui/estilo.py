@@ -53,13 +53,13 @@ Columna = Tuple[str, Callable[[object], object], str]
 
 COLUMNAS: dict[type, List[Columna]] = {
     Libro: [
-        ("ID", lambda l: l.id, "right"),
-        ("Título", lambda l: l.titulo, "left"),
-        ("Autor", lambda l: l.autor, "left"),
-        ("Año", lambda l: l.anio, "right"),
-        ("ISBN", lambda l: l.isbn, "left"),
-        ("Género", lambda l: l.genero.nombre, "left"),
-        ("Editorial", lambda l: l.editorial.nombre, "left"),
+        ("ID", lambda libro: libro.id, "right"),
+        ("Título", lambda libro: libro.titulo, "left"),
+        ("Autor", lambda libro: libro.autor, "left"),
+        ("Año", lambda libro: libro.anio, "right"),
+        ("ISBN", lambda libro: libro.isbn, "left"),
+        ("Género", lambda libro: libro.genero.nombre, "left"),
+        ("Editorial", lambda libro: libro.editorial.nombre, "left"),
     ],
     Genero: [
         ("ID", lambda g: g.id, "right"),

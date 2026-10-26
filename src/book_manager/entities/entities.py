@@ -74,7 +74,9 @@ def _validar_entero(valor: int, campo: str, minimo: int = 0) -> int:
         int: El valor validado.
     """
     if isinstance(valor, bool) or not isinstance(valor, int):
-        raise DatoInvalidoError(f"El campo '{campo}' debe ser un número entero.")
+        raise DatoInvalidoError(
+            f"El campo '{campo}' debe ser un número entero."
+        )
     if valor < minimo:
         raise DatoInvalidoError(
             f"El campo '{campo}' debe ser mayor o igual a {minimo}."
@@ -428,7 +430,9 @@ class Libro(EntidadBase):
     def anio(self, valor: int) -> None:
         valor = _validar_entero(valor, "año", minimo=1450)
         if valor > datetime.date.today().year:
-            raise DatoInvalidoError("El año de publicación no puede ser futuro.")
+            raise DatoInvalidoError(
+                "El año de publicación no puede ser futuro."
+            )
         self.__anio: int = valor
 
     @property
@@ -439,7 +443,9 @@ class Libro(EntidadBase):
     @genero.setter
     def genero(self, valor: Genero) -> None:
         if not isinstance(valor, Genero):
-            raise DatoInvalidoError("El género debe ser una instancia de Genero.")
+            raise DatoInvalidoError(
+                "El género debe ser una instancia de Genero."
+            )
         self.__genero: Genero = valor
 
     @property
@@ -495,7 +501,9 @@ class Precio(EntidadBase):
     @libro.setter
     def libro(self, valor: Libro) -> None:
         if not isinstance(valor, Libro):
-            raise DatoInvalidoError("El libro debe ser una instancia de Libro.")
+            raise DatoInvalidoError(
+                "El libro debe ser una instancia de Libro."
+            )
         self.__libro: Libro = valor
 
     @property
@@ -506,7 +514,9 @@ class Precio(EntidadBase):
     @moneda.setter
     def moneda(self, valor: Moneda) -> None:
         if not isinstance(valor, Moneda):
-            raise DatoInvalidoError("La moneda debe ser una instancia de Moneda.")
+            raise DatoInvalidoError(
+                "La moneda debe ser una instancia de Moneda."
+            )
         self.__moneda: Moneda = valor
 
     @property
@@ -555,7 +565,9 @@ class Stock:
     @libro.setter
     def libro(self, valor: Libro) -> None:
         if not isinstance(valor, Libro):
-            raise DatoInvalidoError("El libro debe ser una instancia de Libro.")
+            raise DatoInvalidoError(
+                "El libro debe ser una instancia de Libro."
+            )
         self.__libro: Libro = valor
 
     @property
