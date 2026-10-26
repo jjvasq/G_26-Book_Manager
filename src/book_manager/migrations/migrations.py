@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Tuple, Type
 
 from sqlalchemy import Insert, Table, func, select
 from sqlalchemy.dialects import postgresql, sqlite
+from sqlalchemy.orm import Session
 
 from book_manager.database.connection import ConexionDB
 from book_manager.entities.entities import texto_a_fecha
@@ -180,6 +181,28 @@ def _escribir_sql(
     return ruta
 
 
+def _ejecutar_sentencia(sesion: Session, sentencia: str) -> int:
+    """Ejecuta una sentencia SQL de texto dentro de la transacción.
+
+    Se usa el cursor del driver sin parámetros para que los caracteres
+    especiales de los datos (como `%` o `:`) no se interpreten como
+    marcadores de parámetros.
+
+    Args:
+        sesion (Session): Sesión con la transacción abierta.
+        sentencia (str): Sentencia SQL completa.
+
+    Returns:
+        int: Cantidad de filas afectadas.
+    """
+    cursor = sesion.connection().connection.cursor()
+    try:
+        cursor.execute(sentencia)
+        return max(cursor.rowcount, 0)
+    finally:
+        cursor.close()
+
+
 def _ajustar_secuencias(conexion: ConexionDB) -> None:
     """Actualiza los autoincrementales de PostgreSQL tras la migración.
 
@@ -240,8 +263,98 @@ def migrar_datos(
             sentencias = _generar_sentencias(conexion, tabla, filas)
             _escribir_sql(carpeta_sqls, numero, tabla, sentencias)
             resumen[tabla.name] = sum(
-                sesion.connection().exec_driver_sql(sentencia).rowcount
+                _ejecutar_sentencia(sesion, sentencia)
                 for sentencia in sentencias
+            )
+    _ajustar_secuencias(conexion)
+    return resumen
+
+
+def leer_sentencias_sql(ruta: str) -> List[str]:
+    """Lee las sentencias de un archivo .sql.
+
+    Se ignoran las líneas vacías y los comentarios. Cada sentencia
+    termina con punto y coma al final de la línea.
+
+    Args:
+        ruta (str): Ruta del archivo .sql.
+
+    Returns:
+        List[str]: Sentencias sin el punto y coma final.
+    """
+    sentencias: List[str] = []
+    actual: List[str] = []
+    with open(ruta, "r", encoding="utf-8") as archivo:
+        for linea in archivo:
+            limpia = linea.strip()
+            if not limpia or limpia.startswith("--"):
+                continue
+            actual.append(limpia)
+            if limpia.endswith(";"):
+                sentencias.append(" ".join(actual)[:-1])
+                actual = []
+    if actual:
+        sentencias.append(" ".join(actual))
+    return sentencias
+
+
+def archivos_sql(carpeta_sqls: str) -> List[str]:
+    """Devuelve los archivos .sql de una carpeta en orden de ejecución.
+
+    Los archivos se ordenan por nombre: el prefijo numérico (01_, 02_...)
+    respeta el orden de las claves foráneas.
+
+    Args:
+        carpeta_sqls (str): Carpeta con los archivos .sql.
+
+    Returns:
+        List[str]: Rutas de los archivos ordenadas.
+    """
+    if not os.path.isdir(carpeta_sqls):
+        return []
+    return [
+        os.path.join(carpeta_sqls, nombre)
+        for nombre in sorted(os.listdir(carpeta_sqls))
+        if nombre.lower().endswith(".sql")
+    ]
+
+
+def cargar_datos_sql(
+    carpeta_sqls: str = CARPETA_SQL,
+    conexion: Optional[ConexionDB] = None,
+) -> Dict[str, int]:
+    """Carga en la base de datos los datos de los archivos .sql.
+
+    Ejecuta, en orden, las sentencias de los archivos generados por la
+    migración (INSERT ... ON CONFLICT DO NOTHING), todas en una única
+    transacción: si alguna falla no se guarda nada. Como las sentencias
+    no pisan registros existentes, la carga se puede repetir sin duplicar
+    datos ni borrar los cargados después.
+
+    Args:
+        carpeta_sqls (str): Carpeta con los archivos .sql.
+        conexion (Optional[ConexionDB]): Conexión a la base de datos. Si
+            es None se crea una con la configuración del .env.
+
+    Returns:
+        Dict[str, int]: Cantidad de registros insertados por archivo.
+
+    Raises:
+        FileNotFoundError: Si la carpeta no tiene archivos .sql.
+    """
+    rutas = archivos_sql(carpeta_sqls)
+    if not rutas:
+        raise FileNotFoundError(
+            f"No hay archivos .sql para cargar en {carpeta_sqls}."
+        )
+    conexion = conexion or ConexionDB()
+    crear_tablas(conexion)
+    resumen: Dict[str, int] = {}
+    with conexion.transaccion() as sesion:
+        for ruta in rutas:
+            resumen[os.path.basename(ruta)] = sum(
+                _ejecutar_sentencia(sesion, sentencia)
+                for sentencia in leer_sentencias_sql(ruta)
             )
     _ajustar_secuencias(conexion)
     return resumen

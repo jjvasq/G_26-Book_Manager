@@ -2,6 +2,14 @@
 
 # Sprint 3
 
+## [Ejercicio 02]
+- Se agrega en `migrations.py` la función `cargar_datos_sql`, que ejecuta en
+orden las sentencias de los archivos `.sql` de `migrations/sql` en una
+única transacción y devuelve los registros insertados por archivo.
+- Se agregan `leer_sentencias_sql` y `archivos_sql`.
+- `main` carga los datos iniciales desde los `.sql`, si todavía no existen,
+migra los CSV del Sprint 1.
+
 ## [Ejercicio 01]
 - Se crea la rama `Sprint_3` a partir de `Sprint_2`.
 - Se agregan las carpetas `scraper` (proyecto Scrapy) y `reportes` (alertas
