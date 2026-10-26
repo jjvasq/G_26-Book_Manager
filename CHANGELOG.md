@@ -2,6 +2,14 @@
 
 # Sprint 3
 
+## [Ejercicio 05]
+- Se agrega `ServicioCompetencia.generar_reporte_excel`, que genera con
+`openpyxl` un archivo en la carpeta `reportes/` con los precios de la última
+ejecución del scraper.
+- El reporte tiene una fila por libro con los campos pedidos: libro, precio
+interno, precio web, diferencia y fecha de extracción, con formato de moneda
+y fecha.
+
 ## [Ejercicio 04]
 - Se agrega `UmbralDiferencia`: la diferencia de precio que dispara una
 alerta, ingresada por el usuario como porcentaje del precio interno

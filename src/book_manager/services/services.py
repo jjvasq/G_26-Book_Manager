@@ -19,6 +19,10 @@ from zoneinfo import ZoneInfo
 
 import requests
 from dotenv import load_dotenv
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.worksheet import Worksheet
 
 from book_manager.database.connection import ARCHIVO_ENV
 from book_manager.entities.entities import (
@@ -77,6 +81,10 @@ RELEVANCIA_MINIMA = 0.7
 CARPETA_REPORTES = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "reportes"
 )
+
+# Formatos de las celdas del reporte en Excel.
+FORMATO_PESOS = '"$" #,##0.00'
+FORMATO_FECHA_HORA = "yyyy-mm-dd hh:mm"
 
 # Carpeta donde se guardan los CSV de precios exportados.
 CARPETA_EXPORTACION = os.path.join(
@@ -1677,6 +1685,105 @@ class ServicioCompetencia:
         # Con BOM, Excel abre el archivo con las tildes correctas.
         archivo.escribir(filas, codificacion="utf-8-sig")
         return archivo.ruta
+
+    def generar_reporte_excel(
+        self, tipo_id: int, carpeta: str = CARPETA_REPORTES
+    ) -> str:
+        """Genera el reporte en Excel de la última ejecución del scraper.
+
+        Tiene una fila por libro con los campos: libro, precio interno,
+        precio web, diferencia y fecha de extracción.
+
+        Args:
+            tipo_id (int): Tipo de dólar para pasar a pesos los precios
+                internos en moneda extranjera.
+            carpeta (str): Carpeta donde se guarda el archivo.
+
+        Returns:
+            str: Ruta del archivo generado.
+
+        Raises:
+            RegistroNoEncontradoError: Si todavía no se ejecutó el scraper
+                o no hay cotizaciones de ese tipo de dólar.
+        """
+        precios = self.ultimos_precios()
+        if not precios:
+            raise RegistroNoEncontradoError(
+                "Todavía no hay precios web: primero ejecute el scraping."
+            )
+        self._preparar_cotizacion(tipo_id)
+        comparaciones = self.comparar(tipo_id, precios)
+        libro = Workbook()
+        self._hoja_comparacion(libro.active, comparaciones)
+        os.makedirs(carpeta, exist_ok=True)
+        nombre = datetime.datetime.now().strftime(
+            "reporte_precios_%Y%m%d_%H%M%S.xlsx"
+        )
+        ruta = os.path.join(carpeta, nombre)
+        libro.save(ruta)
+        return ruta
+
+    @staticmethod
+    def _encabezado(hoja: Worksheet, titulos: List[str]) -> None:
+        """Escribe la fila de encabezados con formato.
+
+        Args:
+            hoja (Worksheet): Hoja del libro de Excel.
+            titulos (List[str]): Títulos de las columnas.
+        """
+        hoja.append(titulos)
+        relleno = PatternFill("solid", fgColor="1F4E78")
+        for celda in hoja[1]:
+            celda.font = Font(bold=True, color="FFFFFF")
+            celda.fill = relleno
+            celda.alignment = Alignment(horizontal="center", wrap_text=True)
+        hoja.freeze_panes = "A2"
+
+    @staticmethod
+    def _ajustar(hoja: Worksheet, anchos: List[int]) -> None:
+        """Fija el ancho de las columnas y agrega el autofiltro.
+
+        Args:
+            hoja (Worksheet): Hoja del libro de Excel.
+            anchos (List[int]): Ancho de cada columna.
+        """
+        for numero, ancho in enumerate(anchos, start=1):
+            hoja.column_dimensions[get_column_letter(numero)].width = ancho
+        hoja.auto_filter.ref = hoja.dimensions
+
+    def _hoja_comparacion(
+        self, hoja: Worksheet, comparaciones: List[ComparacionPrecio]
+    ) -> None:
+        """Completa la hoja con la comparación de precios por libro.
+
+        Args:
+            hoja (Worksheet): Hoja del libro de Excel.
+            comparaciones (List[ComparacionPrecio]): Comparaciones.
+        """
+        hoja.title = "Comparación"
+        self._encabezado(hoja, [
+            "Libro", "Precio interno", "Precio web", "Diferencia",
+            "Fecha de extracción",
+        ])
+        mas_cara = Font(color="C00000")
+        mas_barata = Font(color="2E7D32")
+        for comparacion in comparaciones:
+            web = comparacion.precio_web
+            hoja.append([
+                comparacion.libro.titulo,
+                comparacion.precio_interno,
+                web.precio if web else None,
+                comparacion.diferencia,
+                web.fecha_extraccion if web else None,
+            ])
+            fila = hoja[hoja.max_row]
+            for indice in (1, 2, 3):
+                fila[indice].number_format = FORMATO_PESOS
+            fila[4].number_format = FORMATO_FECHA_HORA
+            if comparacion.diferencia is not None:
+                color = mas_cara if comparacion.diferencia > 0 else mas_barata
+                fila[3].font = color
+        self._ajustar(hoja, [40, 16, 16, 16, 20])
 
 
 class ServicioReportes:
