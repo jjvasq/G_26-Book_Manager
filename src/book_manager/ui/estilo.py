@@ -19,6 +19,7 @@ from rich.text import Text
 from rich.theme import Theme
 
 from book_manager.entities.entities import (
+    Auditoria,
     CotizacionDolar,
     Editorial,
     Genero,
@@ -47,6 +48,23 @@ TEMA = Theme({
 })
 
 consola = Console(theme=TEMA, highlight=False)
+
+# Largo máximo de los detalles de auditoría que se muestran en la tabla.
+LARGO_DETALLES = 90
+
+
+def _recortar(texto: str, largo: int) -> str:
+    """Recorta un texto largo para mostrarlo en una celda.
+
+    Args:
+        texto (str): Texto a mostrar.
+        largo (int): Largo máximo.
+
+    Returns:
+        str: Texto recortado con "..." si superaba el largo.
+    """
+    return texto if len(texto) <= largo else texto[:largo - 3] + "..."
+
 
 # Columnas de la tabla de cada entidad: (encabezado, función, alineación).
 Columna = Tuple[str, Callable[[object], object], str]
@@ -99,6 +117,12 @@ COLUMNAS: dict[type, List[Columna]] = {
             Text("● reponer", style="error") if s.bajo_minimo
             else Text("● ok", style="ok")
         ), "left"),
+    ],
+    Auditoria: [
+        ("ID", lambda a: a.id, "right"),
+        ("Fecha", lambda a: f"{a.fecha:%Y-%m-%d %H:%M:%S}", "left"),
+        ("Acción", lambda a: a.accion, "left"),
+        ("Detalles", lambda a: _recortar(a.detalles, LARGO_DETALLES), "left"),
     ],
     CotizacionDolar: [
         ("Fecha", lambda c: c.fecha, "left"),
