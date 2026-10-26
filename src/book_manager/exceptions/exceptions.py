@@ -61,3 +61,7 @@ class ConfiguracionError(BookManagerError, RuntimeError):
 
 class ApiCotizacionesError(BookManagerError, RuntimeError):
     """No se pudieron obtener las cotizaciones de la API externa."""
+
+
+class ScrapingError(BookManagerError, RuntimeError):
+    """No se pudo completar el scraping del sitio de la competencia."""

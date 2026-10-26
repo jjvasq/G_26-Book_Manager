@@ -20,11 +20,13 @@ from sqlalchemy import (
     CheckConstraint,
     ColumnElement,
     Date,
+    DateTime,
     Float,
     ForeignKey,
     Index,
     Integer,
     String,
+    Text,
     func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -139,6 +141,9 @@ class LibroModel(ModeloConEstado, Base):
     stock: Mapped[Optional[StockModel]] = relationship(
         back_populates="libro"
     )
+    precios_web: Mapped[List[PrecioWebModel]] = relationship(
+        back_populates="libro"
+    )
 
 
 class PrecioModel(ModeloConEstado, Base):
@@ -204,6 +209,64 @@ class CotizacionDolarModel(ModeloConEstado, Base):
 
     tipo: Mapped[TipoCotizacionModel] = relationship(
         back_populates="cotizaciones", lazy="joined"
+    )
+
+
+class PrecioWebModel(ModeloConEstado, Base):
+    """Tabla de precios publicados por la competencia (scraping).
+
+    Cada fila es uno de los resultados de la búsqueda de un libro en el
+    sitio. `ejecucion` agrupa las filas de una misma ejecución del
+    scraper y `fecha_extraccion` es el momento en que se leyó la página.
+    Las formas de pago se guardan como JSON.
+    """
+
+    __tablename__ = "precios_web"
+    __table_args__ = (
+        CheckConstraint("precio > 0", name="ck_precio_web_precio"),
+        CheckConstraint("posicion >= 1", name="ck_precio_web_posicion"),
+        CheckConstraint(
+            "relevancia >= 0 AND relevancia <= 1",
+            name="ck_precio_web_relevancia",
+        ),
+        Index("ix_precios_web_libro_ejecucion", "libro_id", "ejecucion"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    libro_id: Mapped[int] = mapped_column(
+        ForeignKey("libros.id"), nullable=False
+    )
+    sitio: Mapped[str] = mapped_column(String(50), nullable=False)
+    ejecucion: Mapped[datetime.datetime] = mapped_column(
+        DateTime, nullable=False
+    )
+    fecha_extraccion: Mapped[datetime.datetime] = mapped_column(
+        DateTime, nullable=False
+    )
+    posicion: Mapped[int] = mapped_column(Integer, nullable=False)
+    titulo: Mapped[str] = mapped_column(String(300), nullable=False)
+    autor: Mapped[str] = mapped_column(
+        String(200), nullable=False, default=""
+    )
+    isbn: Mapped[str] = mapped_column(String(13), nullable=False, default="")
+    url: Mapped[str] = mapped_column(String(500), nullable=False)
+    url_imagen: Mapped[str] = mapped_column(
+        String(500), nullable=False, default=""
+    )
+    precio: Mapped[float] = mapped_column(Float, nullable=False)
+    precio_usd: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    formas_pago: Mapped[str] = mapped_column(
+        Text, nullable=False, default="[]"
+    )
+    descripcion: Mapped[str] = mapped_column(
+        Text, nullable=False, default=""
+    )
+    relevancia: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.0
+    )
+
+    libro: Mapped[LibroModel] = relationship(
+        back_populates="precios_web", lazy="joined"
     )
 
 

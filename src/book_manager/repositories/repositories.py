@@ -11,11 +11,13 @@ y convierte los modelos ORM en entidades del dominio antes de cerrarla.
 from __future__ import annotations
 
 import abc
+import dataclasses
 import datetime
+import json
 from dataclasses import dataclass
 from typing import Dict, Generic, List, Optional, Type, TypeVar
 
-from sqlalchemy import Select, select, tuple_
+from sqlalchemy import Select, func, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -24,10 +26,12 @@ from book_manager.entities.entities import (
     CotizacionDolar,
     Editorial,
     EntidadBase,
+    FormaPago,
     Genero,
     Libro,
     Moneda,
     Precio,
+    PrecioWeb,
     Stock,
     TipoCotizacion,
 )
@@ -43,6 +47,7 @@ from book_manager.models.models import (
     LibroModel,
     MonedaModel,
     PrecioModel,
+    PrecioWebModel,
     StockModel,
     TipoCotizacionModel,
 )
@@ -1221,6 +1226,133 @@ class RepositorioCotizacionDolar(IRepositorioCotizacionDolar):
         return cotizaciones
 
 
+class RepositorioPrecioWeb(RepositorioSQL[PrecioWeb]):
+    """Repositorio de precios de la competencia (tabla precios_web)."""
+
+    MODELO = PrecioWebModel
+
+    def _a_entidad(self, modelo: PrecioWebModel) -> PrecioWeb:
+        """Convierte el registro en entidad.
+
+        Args:
+            modelo (PrecioWebModel): Registro de la tabla.
+
+        Returns:
+            PrecioWeb: La entidad obtenida.
+        """
+        formas = [FormaPago(**forma) for forma in json.loads(
+            modelo.formas_pago or "[]"
+        )]
+        return PrecioWeb(
+            modelo.id, _libro(modelo.libro), modelo.sitio,
+            modelo.ejecucion, modelo.fecha_extraccion, modelo.posicion,
+            modelo.titulo, modelo.url, modelo.precio, modelo.autor,
+            modelo.isbn, modelo.url_imagen, modelo.precio_usd, formas,
+            modelo.descripcion, modelo.relevancia,
+        )
+
+    def _copiar(self, entidad: PrecioWeb, modelo: PrecioWebModel) -> None:
+        """Copia los datos de la entidad en el registro.
+
+        Args:
+            entidad (PrecioWeb): Entidad con los datos.
+            modelo (PrecioWebModel): Registro que se modifica.
+        """
+        modelo.libro_id = entidad.libro.id
+        modelo.sitio = entidad.sitio
+        modelo.ejecucion = entidad.ejecucion
+        modelo.fecha_extraccion = entidad.fecha_extraccion
+        modelo.posicion = entidad.posicion
+        modelo.titulo = entidad.titulo
+        modelo.autor = entidad.autor
+        modelo.isbn = entidad.isbn
+        modelo.url = entidad.url
+        modelo.url_imagen = entidad.url_imagen
+        modelo.precio = entidad.precio
+        modelo.precio_usd = entidad.precio_usd
+        modelo.formas_pago = json.dumps(
+            [dataclasses.asdict(forma) for forma in entidad.formas_pago],
+            ensure_ascii=False,
+        )
+        modelo.descripcion = entidad.descripcion
+        modelo.relevancia = entidad.relevancia
+
+    def crear_varios(self, entidades: List[PrecioWeb]) -> List[PrecioWeb]:
+        """Crea varios registros en una única transacción.
+
+        Args:
+            entidades (List[PrecioWeb]): Entidades nuevas (con ID 0).
+
+        Returns:
+            List[PrecioWeb]: Las entidades creadas, con su ID.
+        """
+        with self._conexion.transaccion() as sesion:
+            modelos = []
+            for entidad in entidades:
+                modelo = PrecioWebModel(estado=ACTIVO)
+                self._copiar(entidad, modelo)
+                sesion.add(modelo)
+                modelos.append(modelo)
+            sesion.flush()
+            for entidad, modelo in zip(entidades, modelos):
+                entidad.id = modelo.id
+        return entidades
+
+    def leer_por_libro(self, libro_id: int) -> List[PrecioWeb]:
+        """Lee los precios web activos de un libro, del más reciente al
+        más antiguo.
+
+        Args:
+            libro_id (int): ID del libro.
+
+        Returns:
+            List[PrecioWeb]: Precios web del libro.
+        """
+        consulta = (
+            select(PrecioWebModel)
+            .where(PrecioWebModel.estado == ACTIVO)
+            .where(PrecioWebModel.libro_id == libro_id)
+            .order_by(
+                PrecioWebModel.ejecucion.desc(), PrecioWebModel.posicion
+            )
+        )
+        with self._conexion.transaccion() as sesion:
+            return [self._a_entidad(m) for m in sesion.scalars(consulta)]
+
+    def leer_ultima_ejecucion(self) -> Optional[datetime.datetime]:
+        """Devuelve el momento de la última ejecución del scraper.
+
+        Returns:
+            Optional[datetime.datetime]: Inicio de la última ejecución, o
+                None si todavía no hay precios web.
+        """
+        consulta = select(func.max(PrecioWebModel.ejecucion)).where(
+            PrecioWebModel.estado == ACTIVO
+        )
+        with self._conexion.transaccion() as sesion:
+            return sesion.scalar(consulta)
+
+    def leer_por_ejecucion(
+        self, ejecucion: datetime.datetime
+    ) -> List[PrecioWeb]:
+        """Lee los precios web de una ejecución del scraper.
+
+        Args:
+            ejecucion (datetime.datetime): Inicio de la ejecución.
+
+        Returns:
+            List[PrecioWeb]: Precios ordenados por libro y posición.
+        """
+        consulta = (
+            select(PrecioWebModel)
+            .where(PrecioWebModel.estado == ACTIVO)
+            .where(PrecioWebModel.ejecucion == ejecucion)
+            .order_by(PrecioWebModel.libro_id, PrecioWebModel.posicion)
+        )
+        with self._conexion.transaccion() as sesion:
+            return [self._a_entidad(m) for m in sesion.scalars(consulta)]
+
+
 @dataclass
 class Repositorios:
     """Agrupa todos los repositorios del sistema."""
@@ -1233,6 +1365,7 @@ class Repositorios:
     precios: RepositorioPrecio
     stock: RepositorioStock
     cotizaciones: RepositorioCotizacionDolar
+    precios_web: RepositorioPrecioWeb
 
 
 def crear_repositorios(conexion: Optional[ConexionDB] = None) -> Repositorios:
@@ -1255,4 +1388,5 @@ def crear_repositorios(conexion: Optional[ConexionDB] = None) -> Repositorios:
         precios=RepositorioPrecio(conexion),
         stock=RepositorioStock(conexion),
         cotizaciones=RepositorioCotizacionDolar(conexion),
+        precios_web=RepositorioPrecioWeb(conexion),
     )

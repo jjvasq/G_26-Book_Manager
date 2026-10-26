@@ -2,6 +2,22 @@
 
 # Sprint 3
 
+## [Ejercicio 03]
+- Se crea el proyecto Scrapy en `scraper/`.
+- `CuspideSpider` busca en Cúspide cada libro del catálogo por su título,
+toma los 10 primeros resultados de cada búsqueda y de la ficha de cada uno
+obtiene precio, URL de la imagen, formas de pago con su precio y
+descripción detallada. Solo se buscan los libros del catálogo.
+- Loader `LibroWebLoader` con procesadores de entrada y salida: limpieza de
+textos, conversión de precios con formato argentino a número, ISBN
+normalizado, medios de pago como lista y descripción unida.
+- Pipelines: `ValidarItemPipeline` (descarta resultados incompletos o sin
+precio), `DuplicadosPipeline`, `FormasDePagoPipeline` (arma cada forma de
+pago con su precio en pesos o en dólares) y `GuardarResultadosPipeline`.
+- La búsqueda y el resultado que corresponde a cada libro se elige por 
+título: combina el parecido del título (75 %) con la coincidencia del autor 
+(25 %).
+
 ## [Ejercicio 02]
 - Se agrega en `migrations.py` la función `cargar_datos_sql`, que ejecuta en
 orden las sentencias de los archivos `.sql` de `migrations/sql` en una
